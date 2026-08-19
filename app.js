@@ -14,7 +14,7 @@ import {
   newCaptureId, buildManifest, validateForm, describe,
 } from "./js/capture.js";
 import { preparePhoto, formatBytes } from "./js/image.js";
-import { openCornerMarker } from "./js/corners.js";
+import { runRectifyFlow } from "./js/rectify.js";
 import {
   DriveError, uploadBundle, getToken, hasValidToken, disconnect, forgetToken,
 } from "./js/drive.js";
@@ -54,7 +54,7 @@ const FIELD_IDS = {
 };
 
 let photo = null;            // {blob, width, height} — the prepared photo
-let corners = null;          // 4 marked corners in prepared-image px, or null
+let rectify = null;          // result of the rectify flow, or null
 let previewUrl = null;
 let syncing = false;
 let needsConsent = false;
@@ -104,32 +104,58 @@ function setPreview(blob) {
 
 const cornersBtn = $("btn-corners");
 const cornersState = $("corners-state");
+let rectPreviewUrl = null;
 
-function setCorners(value) {
-  corners = value;
+function setRectify(value) {
+  rectify = value;
   cornersBtn.hidden = !photo;
   cornersState.hidden = !photo;
+  if (rectPreviewUrl) { URL.revokeObjectURL(rectPreviewUrl); rectPreviewUrl = null; }
   if (!photo) return;
-  if (corners) {
-    cornersBtn.textContent = "Adjust corners";
+  if (rectify && rectify.output) {
+    // Show the FLATTENED image — it is what will land in the inventory.
+    rectPreviewUrl = URL.createObjectURL(rectify.output.blob);
+    els.photoPreview.src = rectPreviewUrl;
+    cornersBtn.textContent = "Re-rectify…";
     cornersBtn.classList.add("marked");
+    const w = Math.round(rectify.output.widthMm);
+    const h = Math.round(rectify.output.heightMm);
+    $(FIELD_IDS.width_mm).value = w;
+    $(FIELD_IDS.height_mm).value = h;
+    $(FIELD_IDS.width_mm).disabled = true;
+    $(FIELD_IDS.height_mm).disabled = true;
     cornersState.innerHTML =
-      '<span class="ok">&#10003; Corners marked</span> — the PC will ' +
-      "measure the slab off the photo. Width/height below are the real " +
-      "size of that rectangle.";
+      '<span class="ok">&#10003; Rectified</span> — ' +
+      `${w} × ${h} mm measured off the photo. ` +
+      "Dimensions are locked to the rectification.";
+  } else if (rectify) {
+    // Corners + measurements captured, but no WebGL — the PC will warp.
+    cornersBtn.textContent = "Adjust rectification…";
+    cornersBtn.classList.add("marked");
+    $(FIELD_IDS.width_mm).disabled = false;
+    $(FIELD_IDS.height_mm).disabled = false;
+    cornersState.innerHTML =
+      '<span class="ok">&#10003; Corners + measurements set</span> — ' +
+      "the PC will flatten and measure the photo at import.";
   } else {
-    cornersBtn.textContent = "Mark corners for auto-measure";
+    cornersBtn.textContent = "Rectify photo…";
     cornersBtn.classList.remove("marked");
+    $(FIELD_IDS.width_mm).disabled = false;
+    $(FIELD_IDS.height_mm).disabled = false;
     cornersState.textContent =
-      "Optional: tap the slab's 4 corners so the PC can flatten the " +
-      "photo and measure it — no tape-measure guessing.";
+      "Optional: mark the slab's corners and tape sizes to flatten the " +
+      "photo to true dimensions — like the rectify dialog on the PC.";
   }
 }
 
 cornersBtn.addEventListener("click", async () => {
   if (!photo) return;
-  const result = await openCornerMarker(photo.blob, corners);
-  if (result) setCorners(result);
+  const raw = readForm();
+  const result = await runRectifyFlow(photo.blob, rectify, {
+    width: Number.parseFloat(raw.width_mm) || "",
+    height: Number.parseFloat(raw.height_mm) || "",
+  });
+  if (result) setRectify(result);
 });
 
 els.photoInput.addEventListener("change", async () => {
@@ -142,10 +168,10 @@ els.photoInput.addEventListener("change", async () => {
     setPreview(photo.blob);
     els.photoMeta.textContent =
       `${photo.width} × ${photo.height} px · ${formatBytes(photo.blob.size)}`;
-    setCorners(null);            // old marks belong to the old pixels
+    setRectify(null);            // old marks belong to the old pixels
   } catch (err) {
     photo = null;
-    setCorners(null);
+    setRectify(null);
     setPreview(null);
     els.photoMeta.textContent = "";
     els.photoMeta.hidden = true;
@@ -190,7 +216,7 @@ els.form.addEventListener("submit", async (event) => {
       capture_id,
       tenant: settings.tenant,
       device: ensureDeviceName(),
-      corners,
+      rectify,
     });
 
     await putCapture({
@@ -202,7 +228,8 @@ els.form.addEventListener("submit", async (event) => {
       manifest,
       photo: photo.blob,
       photo_name: PHOTO_NAME,
-      bytes: photo.blob.size,
+      rectified_photo: rectify?.output ? rectify.output.blob : null,
+      bytes: photo.blob.size + (rectify?.output ? rectify.output.blob.size : 0),
       schema: SCHEMA,
     });
 
@@ -221,7 +248,7 @@ els.form.addEventListener("submit", async (event) => {
 /** Clear the per-slab fields, keep the ones that repeat down a rack. */
 function resetForm(saved) {
   photo = null;
-  setCorners(null);
+  setRectify(null);
   setPreview(null);
   els.photoMeta.hidden = true;
   els.photoMeta.textContent = "";

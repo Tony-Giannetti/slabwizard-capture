@@ -50,19 +50,41 @@ export function localTimestamp(now = new Date()) {
        + `${sign}${pad(Math.trunc(offset / 60))}:${pad(offset % 60)}`;
 }
 
+export const RECTIFIED_NAME = "rectified.jpg";
+
 /**
  * Build the capture.json payload.
  * @param {object} form   validated form values
- * @param {object} meta   {capture_id, tenant, device, corners}
+ * @param {object} meta   {capture_id, tenant, device, rectify}
  *
- * `corners` (optional): the 4 slab corners marked on the prepared photo,
- * TL TR BR BL in image px. When present, the PC rectifies at import and
- * the slab arrives with measured dimensions; the typed width/height are
- * the real-world size of that corner rectangle.
+ * `rectify` (optional) is the rectify flow's result. It contributes:
+ *  - `corners`: the 4 marks in prepared-photo px, TL TR BR BL — always
+ *    shipped, so the PC can redo the flatten from the original;
+ *  - `measurements`: rect/quad tape sizes + margin, for the PC fallback;
+ *  - `rectified`: present when the phone warped locally — the flattened
+ *    image travels as rectified.jpg and the PC trusts it as-is.
  */
 export function buildManifest(form, meta) {
+  const r = meta.rectify;
+  const extras = {};
+  if (r) {
+    extras.corners = r.corners;
+    extras.measurements = r.mode === "quad"
+      ? { mode: "quad", top_mm: r.dims.top, right_mm: r.dims.right,
+          bottom_mm: r.dims.bottom, left_mm: r.dims.left,
+          diagonal_mm: r.dims.diagonal, margin_mm: r.marginMm }
+      : { mode: "rect", margin_mm: r.marginMm };
+    if (r.output) {
+      extras.rectified = {
+        photo: RECTIFIED_NAME,
+        px_per_mm: r.output.pxPerMm,
+        width_mm: r.output.widthMm,
+        height_mm: r.output.heightMm,
+      };
+    }
+  }
   return {
-    ...(meta.corners ? { corners: meta.corners } : {}),
+    ...extras,
     schema: SCHEMA,
     capture_id: meta.capture_id,
     tenant: meta.tenant || "default",

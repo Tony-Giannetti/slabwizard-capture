@@ -38,7 +38,7 @@
   <p id="photo-meta" class="photo-meta" hidden></p>
 
   <button id="btn-corners" class="secondary corners-btn" type="button" hidden>
-    Mark corners for auto-measure
+    Rectify photo…
   </button>
   <p id="corners-state" class="hint corners-state" hidden></p>
 
@@ -193,6 +193,86 @@
     <button id="corner-cancel" type="button" class="secondary">Cancel</button>
     <button id="corner-redo" type="button" class="secondary">Redo</button>
     <button id="corner-done" type="button" class="primary" disabled>Use corners</button>
+  </div>
+</div>
+
+<!-- ─────────────────────────── Measurements ───────────────────────────── -->
+<div id="measure-overlay" class="sheet-overlay" hidden>
+  <div class="sheet">
+    <h2>Real-world size</h2>
+    <div class="mode-row">
+      <button id="mode-rect" type="button" class="mode-btn">Rectangle</button>
+      <button id="mode-quad" type="button" class="mode-btn">4 sides + diagonal</button>
+    </div>
+
+    <div id="measure-rect">
+      <div class="row">
+        <div class="field">
+          <label for="m-width">Width (mm)</label>
+          <input id="m-width" type="number" inputmode="decimal" step="any" min="0">
+        </div>
+        <div class="field">
+          <label for="m-height">Height (mm)</label>
+          <input id="m-height" type="number" inputmode="decimal" step="any" min="0">
+        </div>
+      </div>
+      <p class="hint">Tape the slab's true width and height. Assumes square
+        corners — use 4 sides + diagonal for the exact shape.</p>
+    </div>
+
+    <div id="measure-quad" hidden>
+      <div class="row">
+        <div class="field">
+          <label for="m-top">Top (mm)</label>
+          <input id="m-top" type="number" inputmode="decimal" step="any" min="0">
+        </div>
+        <div class="field">
+          <label for="m-bottom">Bottom (mm)</label>
+          <input id="m-bottom" type="number" inputmode="decimal" step="any" min="0">
+        </div>
+      </div>
+      <div class="row">
+        <div class="field">
+          <label for="m-left">Left (mm)</label>
+          <input id="m-left" type="number" inputmode="decimal" step="any" min="0">
+        </div>
+        <div class="field">
+          <label for="m-right">Right (mm)</label>
+          <input id="m-right" type="number" inputmode="decimal" step="any" min="0">
+        </div>
+      </div>
+      <div class="field">
+        <label for="m-diagonal">Diagonal, corner 1 &rarr; corner 3 (mm)</label>
+        <input id="m-diagonal" type="number" inputmode="decimal" step="any" min="0">
+      </div>
+      <p class="hint">The tape distances between your marked corners:
+        1&rarr;2 top, 2&rarr;3 right, 3&rarr;4 bottom, 4&rarr;1 left, and the
+        1&rarr;3 diagonal. Captures the slab's true shape, square or not.</p>
+    </div>
+
+    <div class="field">
+      <label for="m-margin">Margin around the slab (mm)</label>
+      <input id="m-margin" type="number" inputmode="decimal" step="any" min="0" value="0">
+    </div>
+
+    <p id="measure-error" class="form-error" hidden></p>
+
+    <div class="sheet-actions">
+      <button id="measure-back" type="button" class="secondary">Back</button>
+      <button id="measure-next" type="button" class="primary">Preview</button>
+    </div>
+  </div>
+</div>
+
+<!-- ───────────────────────────── Preview ──────────────────────────────── -->
+<div id="preview-overlay" class="corner-overlay" hidden>
+  <div class="corner-prompt">Drag the edges to crop &middot;
+    <span id="preview-readout"></span></div>
+  <canvas id="preview-canvas" class="corner-canvas"></canvas>
+  <div class="corner-actions">
+    <button id="preview-back" type="button" class="secondary">Back</button>
+    <button id="preview-reset" type="button" class="secondary">Reset crop</button>
+    <button id="preview-use" type="button" class="primary">Use this</button>
   </div>
 </div>
 

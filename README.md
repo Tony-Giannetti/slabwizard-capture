@@ -138,6 +138,16 @@ already lives in OneDrive.
 
 Photograph → material, thickness, width, height → **Save to inventory**.
 
+**Mark corners for auto-measure** (optional, after the photo): tap the
+slab's four corners — TL, TR, BR, BL, guided — with a magnifier loupe
+under your finger for precision, drag any mark to fine-tune. The corners
+ship in the bundle and the PC runs its real rectification pipeline at
+import, so the slab arrives `rectified` with **measured** dimensions and a
+flattened photo. The typed width/height become the real-world size of the
+corner rectangle, so measure the slab, not the photo. Skip the marking and
+the slab imports as before — hand-typed dims, flagged *unrectified* in the
+inventory until the desktop **Rectify Photo…** button upgrades it.
+
 - **Material, thickness, supplier, lot and location stay filled in** between
   slabs. You photograph a whole rack of the same stone; retyping it forty
   times is how a field tool gets abandoned.

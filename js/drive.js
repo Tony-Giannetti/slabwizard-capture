@@ -291,6 +291,12 @@ export async function uploadBundle({ clientId, folderName }, record) {
 
   await uploadFile(clientId, record.manifest.photo, bundleId,
                    record.photo.type || "image/jpeg", record.photo);
+  if (record.rectified_photo && record.manifest.rectified) {
+    // The flattened image is part of the bundle's contract — it must be
+    // in place before capture.json declares it.
+    await uploadFile(clientId, record.manifest.rectified.photo, bundleId,
+                     "image/jpeg", record.rectified_photo);
+  }
   await uploadFile(clientId, "capture.json", bundleId, "application/json",
                    new Blob([JSON.stringify(record.manifest, null, 2)],
                             { type: "application/json" }));
