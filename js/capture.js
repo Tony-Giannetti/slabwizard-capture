@@ -80,6 +80,9 @@ export function buildManifest(form, meta) {
         px_per_mm: r.output.pxPerMm,
         width_mm: r.output.widthMm,
         height_mm: r.output.heightMm,
+        // The traced/detected natural edge, mm, relative to the shipped
+        // flattened image. Lands on the record as outline_mm.
+        ...(r.output.outlineMm ? { outline_mm: r.output.outlineMm } : {}),
       };
     }
   }

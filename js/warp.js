@@ -145,7 +145,39 @@ export function warpToCanvas(image, srcCorners, dstCornersMm,
   gl.drawArrays(gl.TRIANGLES, 0, 3);
   gl.finish();
 
-  return { canvas, pxPerMm, widthPx: outW, heightPx: outH };
+  // dstPx: where the slab's reference quad landed in the output — the
+  // strong prior that edge detection refines around.
+  return { canvas, pxPerMm, widthPx: outW, heightPx: outH, dstPx };
+}
+
+/**
+ * Crop a region out of a warped canvas, optionally masked to an outline
+ * polygon (canvas px). With an outline the result is a PNG whose outside
+ * is transparent — the slab's natural edge; without one, a JPEG.
+ */
+export function cropToBlobMasked(canvas, x, y, w, h, outlinePx = null,
+                                 quality = 0.9) {
+  const out = document.createElement("canvas");
+  out.width = Math.max(1, Math.round(w));
+  out.height = Math.max(1, Math.round(h));
+  const ctx = out.getContext("2d");
+  if (outlinePx && outlinePx.length >= 3) {
+    ctx.beginPath();
+    outlinePx.forEach(([px, py], i) => {
+      const ox = px - x, oy = py - y;
+      if (i === 0) ctx.moveTo(ox, oy);
+      else ctx.lineTo(ox, oy);
+    });
+    ctx.closePath();
+    ctx.clip();
+  }
+  ctx.drawImage(canvas, x, y, w, h, 0, 0, out.width, out.height);
+  const type = outlinePx ? "image/png" : "image/jpeg";
+  return new Promise((resolve, reject) => {
+    out.toBlob((blob) => (blob ? resolve(blob)
+                               : reject(new Error("could not encode"))),
+               type, quality);
+  });
 }
 
 /** Crop a region (output px) out of a warped canvas into a JPEG blob. */
