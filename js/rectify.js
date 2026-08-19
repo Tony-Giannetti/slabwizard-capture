@@ -47,7 +47,9 @@ function showMeasureSheet(defaults) {
         if (el && val) el.value = val;
       }
     }
-    $("m-margin").value = defaults.marginMm || 0;
+    if (defaults.marginMm !== undefined) {
+      $("m-margin").value = defaults.marginMm;
+    }
 
     const applyMode = () => {
       $("measure-rect").hidden = mode !== "rect";

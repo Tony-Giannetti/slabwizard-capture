@@ -180,7 +180,7 @@
   </div>
 
   <p class="hint version">SlabWizard Capture
-    <span id="app-version">v10</span> &middot; bundle schema 1</p>
+    <span id="app-version">v11</span> &middot; bundle schema 1</p>
 </main>
 
 <div id="toast" class="toast" hidden></div>
@@ -253,7 +253,9 @@
 
     <div class="field">
       <label for="m-margin">Margin around the slab (mm)</label>
-      <input id="m-margin" type="number" inputmode="decimal" step="any" min="0" value="0">
+      <input id="m-margin" type="number" inputmode="decimal" step="any" min="0" value="30">
+      <p class="hint">Keeps some background in frame — edge detection needs
+        it to find the slab's natural edge. Crop it away afterwards.</p>
     </div>
 
     <p id="measure-error" class="form-error" hidden></p>
