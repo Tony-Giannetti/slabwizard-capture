@@ -110,6 +110,18 @@ def bump_cache_version() -> str:
     version = int(match.group(2)) + 1
     sw.write_text(_CACHE_RE.sub(r"\g<1>%d\g<3>" % version, text),
                   encoding="utf-8")
+
+    # Stamp the same version into the Settings screen, so "which build is
+    # this phone actually running?" is answerable by looking at it.
+    index = MOBILE / "index.html"
+    html = index.read_text(encoding="utf-8")
+    stamped = re.sub(r'(<span id="app-version">)v\d+(</span>)',
+                     r"\g<1>v%d\g<2>" % version, html)
+    if stamped != html:
+        index.write_text(stamped, encoding="utf-8")
+    else:
+        print("  WARNING: app-version span not found in index.html — "
+              "the visible version was not stamped.")
     return "v%d" % version
 
 
