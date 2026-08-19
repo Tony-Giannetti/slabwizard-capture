@@ -8,7 +8,13 @@
  */
 window.SLABWIZARD_CONFIG = {
   // "xxxxxxxx.apps.googleusercontent.com" from Google Cloud Console.
-  clientId: "",
+  //
+  // Public by design — an OAuth client ID ships in the page source of every
+  // Google-integrated website. It is not a secret and the matching client
+  // secret is unused (a browser app cannot keep one). What actually gates
+  // access is the test-user list on the Google Auth Platform "Audience"
+  // page plus the authorised JavaScript origins on the client.
+  clientId: "858822303789-k54blu25m75l2kmu82ikaiuem62ka6mg.apps.googleusercontent.com",
 
   // Which site/company inventory these captures belong to. Must match the
   // tenant SlabWizard is importing on the PC. Letters, digits, dash,

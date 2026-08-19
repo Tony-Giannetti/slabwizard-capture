@@ -5,7 +5,10 @@
  * an auth or upload response would be worse than useless. Uploads survive
  * offline through the IndexedDB queue, not through here. */
 
-const CACHE = "slabwizard-capture-v1";
+// Bumped automatically by tools/deploy_pages.py on every deploy that
+// changes a file. It has to change, or `activate` keeps the old cache and a
+// phone that already has the app serves yesterday's config.js forever.
+const CACHE = "slabwizard-capture-v3";
 
 const SHELL = [
   "./",

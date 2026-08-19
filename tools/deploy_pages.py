@@ -15,14 +15,17 @@ from __future__ import annotations
 
 import argparse
 import filecmp
+import re
 import shutil
 import subprocess
 import sys
 from pathlib import Path
+from typing import List
 
 MOBILE = Path(__file__).resolve().parent.parent
 DEPLOY = MOBILE.parent.parent.parent / "slabwizard-capture"
 REMOTE = "https://github.com/Tony-Giannetti/slabwizard-capture.git"
+PAGES_URL = "https://tony-giannetti.github.io/slabwizard-capture/"
 
 # Everything the browser needs, plus the docs and the icon generator.
 INCLUDE_FILES = ["index.html", "styles.css", "app.js", "config.js",
@@ -30,25 +33,84 @@ INCLUDE_FILES = ["index.html", "styles.css", "app.js", "config.js",
 INCLUDE_DIRS = ["js", "icons", "tools"]
 SKIP_NAMES = {"__pycache__", ".DS_Store", "Thumbs.db"}
 
+_CACHE_RE = re.compile(r'(const CACHE = "slabwizard-capture-v)(\d+)(";)')
+
 
 def _run(args, cwd, check=True) -> subprocess.CompletedProcess:
     return subprocess.run(args, cwd=str(cwd), check=check,
                           capture_output=True, text=True)
 
 
-def _copy_tree(src: Path, dst: Path, changed: list) -> None:
+def _skip(item: Path) -> bool:
+    return (item.name in SKIP_NAMES
+            or item.name.endswith((".tmp", ".tmp.mjs", ".pyc")))
+
+
+def _sync_dir(src: Path, dst: Path, rel: str, copy: bool,
+              changed: List[str]) -> None:
     for item in sorted(src.iterdir()):
-        if item.name in SKIP_NAMES or item.name.endswith((".tmp", ".tmp.mjs")):
+        if _skip(item):
             continue
         target = dst / item.name
+        name = f"{rel}/{item.name}"
         if item.is_dir():
-            target.mkdir(parents=True, exist_ok=True)
-            _copy_tree(item, target, changed)
+            if copy:
+                target.mkdir(parents=True, exist_ok=True)
+            elif not target.exists():
+                changed.append(name + "/")
+                continue
+            _sync_dir(item, target, name, copy, changed)
         else:
-            if not target.exists() or not filecmp.cmp(item, target, shallow=False):
-                changed.append(str(target.relative_to(dst.parent)))
-            target.parent.mkdir(parents=True, exist_ok=True)
-            shutil.copy2(item, target)
+            if not target.exists() or not filecmp.cmp(item, target,
+                                                      shallow=False):
+                changed.append(name)
+            if copy:
+                target.parent.mkdir(parents=True, exist_ok=True)
+                shutil.copy2(item, target)
+
+
+def sync(copy: bool) -> List[str]:
+    """Compare (and optionally copy) mobile/ into the deploy clone."""
+    changed: List[str] = []
+    for name in INCLUDE_FILES:
+        src = MOBILE / name
+        if not src.is_file():
+            print(f"  missing (skipped): {name}")
+            continue
+        dst = DEPLOY / name
+        if not dst.exists() or not filecmp.cmp(src, dst, shallow=False):
+            changed.append(name)
+        if copy:
+            shutil.copy2(src, dst)
+
+    for name in INCLUDE_DIRS:
+        src = MOBILE / name
+        if src.is_dir():
+            if copy:
+                (DEPLOY / name).mkdir(parents=True, exist_ok=True)
+            _sync_dir(src, DEPLOY / name, name, copy, changed)
+    return changed
+
+
+def bump_cache_version() -> str:
+    """Increment the service worker's cache name in the SOURCE tree.
+
+    Without this the browser keeps the previous cache on activate, and a
+    phone that already installed the app serves the old bundle — including
+    an old config.js — indefinitely. Bumping is not optional on a deploy,
+    so it is not left to whoever is deploying to remember.
+    """
+    sw = MOBILE / "sw.js"
+    text = sw.read_text(encoding="utf-8")
+    match = _CACHE_RE.search(text)
+    if not match:
+        print("  WARNING: could not find the CACHE constant in sw.js — "
+              "phones may keep serving the old bundle.")
+        return "?"
+    version = int(match.group(2)) + 1
+    sw.write_text(_CACHE_RE.sub(r"\g<1>%d\g<3>" % version, text),
+                  encoding="utf-8")
+    return "v%d" % version
 
 
 def ensure_clone() -> None:
@@ -67,38 +129,27 @@ def main() -> int:
 
     ensure_clone()
 
-    changed: list = []
-    for name in INCLUDE_FILES:
-        src = MOBILE / name
-        if not src.is_file():
-            print(f"  missing (skipped): {name}")
-            continue
-        dst = DEPLOY / name
-        if not dst.exists() or not filecmp.cmp(src, dst, shallow=False):
-            changed.append(name)
-        if not args.dry_run:
-            shutil.copy2(src, dst)
-
-    for name in INCLUDE_DIRS:
-        src = MOBILE / name
-        if not src.is_dir():
-            continue
-        if args.dry_run:
-            continue
-        _copy_tree(src, DEPLOY / name, changed)
-
-    if args.dry_run:
-        print("Would update:", ", ".join(changed) if changed else "nothing")
-        return 0
-
-    status = _run(["git", "status", "--porcelain"], DEPLOY)
-    if not status.stdout.strip():
+    pending = sync(copy=False)
+    if not pending:
         print("Already up to date — nothing to deploy.")
         return 0
 
     print("Changed:")
-    for line in status.stdout.strip().splitlines():
-        print("  " + line)
+    for name in pending:
+        print("  " + name)
+
+    if args.dry_run:
+        print("\n--dry-run: nothing copied, pushed, or version-bumped.")
+        return 0
+
+    # Bump BEFORE the copy so the new version ships in this same push.
+    print(f"Service worker cache -> {bump_cache_version()}")
+    sync(copy=True)
+
+    status = _run(["git", "status", "--porcelain"], DEPLOY)
+    if not status.stdout.strip():
+        print("Deploy clone is already identical — nothing to push.")
+        return 0
 
     _run(["git", "add", "-A"], DEPLOY)
     _run(["git", "commit", "-m", args.message], DEPLOY)
@@ -107,8 +158,7 @@ def main() -> int:
         print("Push failed:\n" + (push.stderr or push.stdout), file=sys.stderr)
         return 1
 
-    print("\nDeployed. Pages usually takes 30-60s to pick it up:")
-    print("  https://tony-giannetti.github.io/slabwizard-capture/")
+    print(f"\nDeployed. Pages usually takes 30-60s to pick it up:\n  {PAGES_URL}")
     return 0
 
 
