@@ -1,0 +1,186 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#1b1d21">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="SlabWizard">
+<title>SlabWizard Capture</title>
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" href="icons/icon-192.png">
+<link rel="apple-touch-icon" href="icons/icon-192.png">
+<link rel="stylesheet" href="styles.css">
+</head>
+<body>
+
+<header class="bar">
+  <h1>Slab Capture</h1>
+  <div class="bar-right">
+    <span id="net-dot" class="dot" title="Connection"></span>
+    <button id="btn-settings" class="icon-btn" aria-label="Settings">&#9881;</button>
+  </div>
+</header>
+
+<!-- ────────────────────────────────── Capture ─────────────────────────── -->
+<main id="view-capture" class="view">
+
+  <label id="photo-drop" for="photo-input" class="photo-drop">
+    <input id="photo-input" type="file" accept="image/*" capture="environment" hidden>
+    <img id="photo-preview" alt="" hidden>
+    <div id="photo-placeholder" class="photo-placeholder">
+      <span class="cam">&#128247;</span>
+      <span class="cam-label">Tap to photograph the slab</span>
+      <span class="cam-hint">Stand square on, get all four edges in frame</span>
+    </div>
+  </label>
+  <p id="photo-meta" class="photo-meta" hidden></p>
+
+  <form id="slab-form" novalidate>
+    <div class="row">
+      <div class="field grow">
+        <label for="f-material">Material <span class="req">*</span></label>
+        <input id="f-material" list="material-list" autocomplete="off"
+               enterkeyhint="next" placeholder="e.g. Calacatta Gold">
+        <datalist id="material-list"></datalist>
+      </div>
+      <div class="field narrow">
+        <label for="f-thickness">Thick. (mm) <span class="req">*</span></label>
+        <input id="f-thickness" type="number" inputmode="decimal" step="any"
+               min="0" placeholder="20">
+      </div>
+    </div>
+
+    <div class="row">
+      <div class="field">
+        <label for="f-width">Width (mm) <span class="req">*</span></label>
+        <input id="f-width" type="number" inputmode="decimal" step="any"
+               min="0" placeholder="3200">
+      </div>
+      <div class="field">
+        <label for="f-height">Height (mm) <span class="req">*</span></label>
+        <input id="f-height" type="number" inputmode="decimal" step="any"
+               min="0" placeholder="1600">
+      </div>
+    </div>
+
+    <div class="row">
+      <div class="field grow">
+        <label for="f-name">Name</label>
+        <input id="f-name" autocomplete="off" placeholder="defaults to material">
+      </div>
+      <div class="field narrow">
+        <label for="f-kind">Kind</label>
+        <select id="f-kind">
+          <option value="slab">Slab</option>
+          <option value="remnant">Remnant</option>
+        </select>
+      </div>
+    </div>
+
+    <details id="more-fields">
+      <summary>Supplier, location &amp; cost</summary>
+      <div class="row">
+        <div class="field grow">
+          <label for="f-supplier">Supplier</label>
+          <input id="f-supplier" list="supplier-list" autocomplete="off">
+          <datalist id="supplier-list"></datalist>
+        </div>
+        <div class="field narrow">
+          <label for="f-lot">Lot / bundle</label>
+          <input id="f-lot" autocomplete="off">
+        </div>
+      </div>
+      <div class="row">
+        <div class="field grow">
+          <label for="f-location">Location</label>
+          <input id="f-location" list="location-list" autocomplete="off"
+                 placeholder="e.g. Rack A3">
+          <datalist id="location-list"></datalist>
+        </div>
+        <div class="field narrow">
+          <label for="f-cost">Cost</label>
+          <input id="f-cost" type="number" inputmode="decimal" step="any" min="0">
+        </div>
+      </div>
+      <div class="field">
+        <label for="f-notes">Notes</label>
+        <textarea id="f-notes" rows="2"
+                  placeholder="defects, veining, anything the PC should know"></textarea>
+      </div>
+    </details>
+
+    <p id="form-error" class="form-error" hidden></p>
+
+    <button id="btn-save" type="submit" class="primary">Save to inventory</button>
+  </form>
+
+  <button id="btn-queue" class="link-btn">
+    <span id="queue-summary">Nothing waiting to upload</span>
+  </button>
+</main>
+
+<!-- ─────────────────────────────────── Queue ──────────────────────────── -->
+<main id="view-queue" class="view" hidden>
+  <div class="view-head">
+    <button class="back-btn" data-back>&#8592; Back</button>
+    <h2>Upload queue</h2>
+  </div>
+  <p id="queue-hint" class="hint"></p>
+  <button id="btn-sync" class="primary">Upload now</button>
+  <ul id="queue-list" class="queue-list"></ul>
+  <button id="btn-clear-done" class="link-btn">Clear uploaded</button>
+</main>
+
+<!-- ───────────────────────────────── Settings ─────────────────────────── -->
+<main id="view-settings" class="view" hidden>
+  <div class="view-head">
+    <button class="back-btn" data-back>&#8592; Back</button>
+    <h2>Settings</h2>
+  </div>
+
+  <div class="field">
+    <label for="s-client-id">Google OAuth client ID</label>
+    <input id="s-client-id" autocomplete="off" spellcheck="false"
+           placeholder="xxxxx.apps.googleusercontent.com">
+    <p class="hint">From Google Cloud Console. See the README — this is a
+      one-time setup, and the app can only ever touch the folder it creates.</p>
+  </div>
+
+  <div class="field">
+    <label for="s-tenant">Site / company code</label>
+    <input id="s-tenant" autocomplete="off" spellcheck="false" placeholder="default">
+    <p class="hint">Keeps separate yards' inventories apart. Letters, digits,
+      dash and underscore only. Must match what the PC is set to import.</p>
+  </div>
+
+  <div class="field">
+    <label for="s-device">This device's name</label>
+    <input id="s-device" autocomplete="off" placeholder="e.g. yard-phone">
+    <p class="hint">Stored on each slab record so you can tell who shot it.</p>
+  </div>
+
+  <div class="field">
+    <label for="s-folder">Drive folder name</label>
+    <input id="s-folder" autocomplete="off" placeholder="SlabWizard Captures">
+  </div>
+
+  <button id="btn-save-settings" class="primary">Save settings</button>
+
+  <div class="account">
+    <p id="auth-state" class="hint">Not connected to Google Drive.</p>
+    <button id="btn-connect" class="secondary">Connect Google Drive</button>
+    <button id="btn-disconnect" class="link-btn">Disconnect</button>
+  </div>
+
+  <p class="hint version">SlabWizard Capture &middot; bundle schema 1</p>
+</main>
+
+<div id="toast" class="toast" hidden></div>
+
+<script src="https://accounts.google.com/gsi/client" async defer></script>
+<script src="config.js"></script>
+<script src="app.js" type="module"></script>
+</body>
+</html>
