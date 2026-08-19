@@ -168,15 +168,21 @@ export function openCornerMarker(photoBlob, existing = null) {
       return best;
     }
 
+    let grabOff = [0, 0];   // corner minus finger, in image px — a re-grab
+                            // must NOT jolt the corner to the fingertip.
+
     function onDown(ev) {
       ev.preventDefault();
       const sx = ev.clientX, sy = ev.clientY;
+      const finger = toImage(sx, sy);
       const hit = nearestCorner(sx, sy);
       if (hit >= 0) {
         dragging = hit;
+        grabOff = [corners[hit][0] - finger[0], corners[hit][1] - finger[1]];
       } else if (corners.length < 4) {
-        corners.push(toImage(sx, sy));
+        corners.push(finger);
         dragging = corners.length - 1;     // place-and-adjust in one touch
+        grabOff = [0, 0];
       } else {
         return;
       }
@@ -188,7 +194,11 @@ export function openCornerMarker(photoBlob, existing = null) {
     function onMove(ev) {
       if (dragging < 0) return;
       ev.preventDefault();
-      corners[dragging] = toImage(ev.clientX, ev.clientY);
+      const finger = toImage(ev.clientX, ev.clientY);
+      corners[dragging] = [
+        Math.min(imgW, Math.max(0, finger[0] + grabOff[0])),
+        Math.min(imgH, Math.max(0, finger[1] + grabOff[1])),
+      ];
       drawLoupe(corners[dragging], ev.clientX, ev.clientY);
       draw();
     }

@@ -180,7 +180,7 @@
   </div>
 
   <p class="hint version">SlabWizard Capture
-    <span id="app-version">v8</span> &middot; bundle schema 1</p>
+    <span id="app-version">v9</span> &middot; bundle schema 1</p>
 </main>
 
 <div id="toast" class="toast" hidden></div>
@@ -274,19 +274,17 @@
   <div class="preview-tools">
     <button id="pv-rotl" type="button" class="tool-btn" title="Rotate left">&#10226;</button>
     <button id="pv-rotr" type="button" class="tool-btn" title="Rotate right">&#10227;</button>
-    <input id="pv-fine" type="range" min="-10" max="10" step="0.5" value="0"
-           title="Fine rotation">
     <button id="pv-mode-crop" type="button" class="mode-btn on">Crop</button>
     <button id="pv-mode-outline" type="button" class="mode-btn">Edge</button>
+    <button id="pv-mode-rotate" type="button" class="mode-btn">Straighten</button>
   </div>
   <div id="pv-outline-tools" class="preview-tools" hidden>
     <button id="pv-detect" type="button" class="tool-btn wide">Detect edge</button>
-    <input id="pv-thresh" type="range" min="15" max="90" step="1" value="42"
-           title="Detection sensitivity">
     <button id="pv-outline-clear" type="button" class="tool-btn">Clear</button>
     <button id="pv-point-remove" type="button" class="tool-btn warn" hidden>
       Remove point</button>
   </div>
+  <canvas id="preview-loupe" class="corner-loupe" hidden></canvas>
 
   <div class="corner-actions">
     <button id="preview-back" type="button" class="secondary">Back</button>

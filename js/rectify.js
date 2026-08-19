@@ -17,7 +17,7 @@
 import { openCornerMarker } from "./corners.js";
 import { rectCorners, quadCorners } from "./homography.js";
 import { warpToCanvas, cropToBlobMasked } from "./warp.js";
-import { detectOutline, pixelGetter } from "./outline.js";
+import { detectSlabOutline, pixelGetter } from "./outline.js";
 
 const $ = (id) => document.getElementById(id);
 
@@ -111,24 +111,32 @@ function rotateGeom(geom, deg) {
   };
 }
 
-/** Run edge detection on a downscaled copy (full-res would be slow). */
-function detectOnCanvas(canvas, dstPx, marginPx, threshold) {
-  const MAX = 768;
-  const k = Math.min(1, MAX / Math.max(canvas.width, canvas.height));
-  const small = document.createElement("canvas");
-  small.width = Math.max(1, Math.round(canvas.width * k));
-  small.height = Math.max(1, Math.round(canvas.height * k));
-  const sctx = small.getContext("2d", { willReadFrequently: true });
-  sctx.drawImage(canvas, 0, 0, small.width, small.height);
-  const data = sctx.getImageData(0, 0, small.width, small.height);
+/** The desktop detection pipeline, staged like outline.py: segment on a
+ * small raster, refine (edge-snap) at higher resolution. Returns
+ * {ok, polygon (canvas px), reason}. */
+function detectOnCanvas(canvas, dstPx, pxPerMm) {
+  const raster = (maxEdge) => {
+    const k = Math.min(1, maxEdge / Math.max(canvas.width, canvas.height));
+    const c = document.createElement("canvas");
+    c.width = Math.max(1, Math.round(canvas.width * k));
+    c.height = Math.max(1, Math.round(canvas.height * k));
+    const cctx = c.getContext("2d", { willReadFrequently: true });
+    cctx.drawImage(canvas, 0, 0, c.width, c.height);
+    return { k, data: cctx.getImageData(0, 0, c.width, c.height) };
+  };
+  const seg = raster(500);           // segmentation stage (GrabCut-scale)
+  const ref = raster(1600);          // edge-snap refinement stage
 
-  const quad = dstPx.map(([x, y]) => [x * k, y * k]);
-  const band = Math.min(60, Math.max(8, marginPx * k * 0.9));
-  const found = detectOutline(pixelGetter(data), quad, {
-    bandOut: band, bandIn: Math.max(band, 20), threshold,
-    spacing: Math.max(5, (small.width + small.height) / 120),
-  });
-  return found ? found.map(([x, y]) => [x / k, y / k]) : null;
+  const result = detectSlabOutline(
+    seg.data,
+    dstPx.map(([x, y]) => [x * seg.k, y * seg.k]),
+    pixelGetter(ref.data),
+    ref.k / seg.k,
+    pxPerMm * ref.k,
+  );
+  if (!result.ok) return result;
+  return { ok: true, reason: null,
+           polygon: result.polygon.map(([x, y]) => [x / ref.k, y / ref.k]) };
 }
 
 /**
@@ -146,6 +154,8 @@ function previewStage(makeWarp, marginMm) {
     const dpr = window.devicePixelRatio || 1;
 
     let quarter = 0;
+    let fine = 0;                    // straighten angle, deg, clamped +-45
+    let shownFine = 0;               // angle the current warp was made at
     let warped = null;
     let src = null;
     let crop = null;
@@ -155,10 +165,11 @@ function previewStage(makeWarp, marginMm) {
     let fit = { s: 1, ox: 0, oy: 0 };
     let drag = null;
 
-    const angleNow = () => quarter * 90 + Number($("pv-fine").value);
+    const angleNow = () => quarter * 90 + fine;
 
     async function rewarp() {
       warped = await makeWarp(angleNow());
+      shownFine = fine;
       src = warped.canvas;
       crop = { x: 0, y: 0, w: src.width, h: src.height };
       outline = null;                // old coords belong to the old frame
@@ -186,7 +197,20 @@ function previewStage(makeWarp, marginMm) {
     function draw() {
       ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
       ctx.clearRect(0, 0, view.width, view.height);
+      // Straighten preview: spin the already-rendered image about its own
+      // centre by whatever the real re-warp still owes (desktop's
+      // _paint_image) — instant feedback, full-quality warp on release.
+      const pending = ((fine - shownFine) * Math.PI) / 180;
+      if (pending) {
+        const cxs = fit.ox + (src.width * fit.s) / 2;
+        const cys = fit.oy + (src.height * fit.s) / 2;
+        ctx.save();
+        ctx.translate(cxs, cys);
+        ctx.rotate(pending);
+        ctx.translate(-cxs, -cys);
+      }
       ctx.drawImage(src, fit.ox, fit.oy, src.width * fit.s, src.height * fit.s);
+      if (pending) ctx.restore();
 
       if (mode === "crop") {
         const [cx, cy] = toScreen(crop.x, crop.y);
@@ -243,14 +267,18 @@ function previewStage(makeWarp, marginMm) {
       const hint = document.getElementById("preview-hint");
       hint.textContent = mode === "crop"
         ? "Drag the edges to crop"
-        : outline ? "Drag points; tap the line to add one"
-                  : "Detect edge, or tap the image to start tracing";
+        : mode === "rotate"
+          ? "Drag to turn the slab (" + (quarter * 90 + fine).toFixed(1)
+            + String.fromCharCode(176) + ")"
+          : outline ? "Drag points; tap the line to add one"
+                    : "Detect edge, or tap the image to start tracing";
       document.getElementById("preview-readout").textContent =
         Math.round(crop.w / warped.pxPerMm) + " x " +
         Math.round(crop.h / warped.pxPerMm) + " mm";
       $("pv-outline-tools").hidden = mode !== "outline";
       $("pv-mode-crop").classList.toggle("on", mode === "crop");
       $("pv-mode-outline").classList.toggle("on", mode === "outline");
+      $("pv-mode-rotate").classList.toggle("on", mode === "rotate");
       $("pv-point-remove").hidden =
         !(mode === "outline" && outline && selected >= 0
           && outline.length > 3);
@@ -302,10 +330,24 @@ function previewStage(makeWarp, marginMm) {
       return best;
     }
 
+    // Straighten drag: angle of the pointer about the image centre, the
+    // desktop's dial (drag anywhere, the image follows the hand round).
+    const cursorDeg = (sx, sy) => {
+      const cxs = fit.ox + (src.width * fit.s) / 2;
+      const cys = fit.oy + (src.height * fit.s) / 2;
+      if (Math.hypot(sx - cxs, sy - cys) < 24) return null;  // dead centre
+      return (Math.atan2(sy - cys, sx - cxs) * 180) / Math.PI;
+    };
+    const clampFine = (v) => Math.min(45, Math.max(-45, v));
+
     function onDown(ev) {
       ev.preventDefault();
       const [ix, iy] = toImage(ev.clientX, ev.clientY);
-      if (mode === "crop") {
+      if (mode === "rotate") {
+        const deg = cursorDeg(ev.clientX, ev.clientY);
+        if (deg === null) return;
+        drag = { kind: "rot", grabDeg: deg, from: fine };
+      } else if (mode === "crop") {
         const kind = cropHit(ev.clientX, ev.clientY);
         if (!kind) return;
         drag = { kind, start: [ix, iy], orig: { x: crop.x, y: crop.y,
@@ -318,14 +360,19 @@ function previewStage(makeWarp, marginMm) {
         }
         const pt = nearestPoint(ix, iy);
         if (pt >= 0) {
+          // Grab RELATIVE to the point: it must not jolt to the
+          // fingertip — hold it where it is and drag from there.
           selected = pt;
-          drag = { kind: "pt", idx: pt };
+          drag = { kind: "pt", idx: pt,
+                   off: [outline[pt][0] - ix, outline[pt][1] - iy] };
+          drawPreviewLoupe(outline[pt]);
         } else {
           const seg = nearestSegment(ix, iy);
           if (seg >= 0) {
             outline.splice(seg + 1, 0, [ix, iy]);
             selected = seg + 1;
-            drag = { kind: "pt", idx: seg + 1 };
+            drag = { kind: "pt", idx: seg + 1, off: [0, 0] };
+            drawPreviewLoupe(outline[selected]);
           } else {
             selected = -1;
           }
@@ -339,9 +386,19 @@ function previewStage(makeWarp, marginMm) {
       if (!drag) return;
       ev.preventDefault();
       const [ix, iy] = toImage(ev.clientX, ev.clientY);
+      if (drag.kind === "rot") {
+        const deg = cursorDeg(ev.clientX, ev.clientY);
+        if (deg === null) return;
+        // Unwrap across the +-180 seam so the turn follows the hand.
+        const delta = ((deg - drag.grabDeg + 540) % 360) - 180;
+        fine = clampFine(drag.from + delta);
+        draw();
+        return;
+      }
       if (drag.kind === "pt") {
-        outline[drag.idx] = [clamp(ix, 0, src.width),
-                             clamp(iy, 0, src.height)];
+        outline[drag.idx] = [clamp(ix + drag.off[0], 0, src.width),
+                             clamp(iy + drag.off[1], 0, src.height)];
+        drawPreviewLoupe(outline[drag.idx]);
       } else {
         const dx = ix - drag.start[0], dy = iy - drag.start[1];
         const o = drag.orig;
@@ -365,13 +422,56 @@ function previewStage(makeWarp, marginMm) {
       draw();
     }
 
-    function onUp() { drag = null; draw(); }
+    function onUp() {
+      const wasRot = drag && drag.kind === "rot";
+      drag = null;
+      $("preview-loupe").hidden = true;
+      if (wasRot && Math.abs(fine - shownFine) > 0.05) {
+        // The hand has settled — do the real full-quality re-warp, like
+        // the desktop's debounced recompute.
+        rewarp();
+      } else {
+        draw();
+      }
+    }
+
+    function drawPreviewLoupe(pt) {
+      const loupe = $("preview-loupe");
+      const L = 132, Z = 3;
+      loupe.hidden = false;
+      loupe.width = L * dpr;
+      loupe.height = L * dpr;
+      loupe.style.width = L + "px";
+      loupe.style.height = L + "px";
+      const [sx, sy] = toScreen(pt[0], pt[1]);
+      const lx = Math.min(Math.max(sx - L / 2, 8),
+                          overlay.clientWidth - L - 8);
+      const above = sy - L - 36;
+      loupe.style.left = lx + "px";
+      loupe.style.top = (above > 8 ? above : sy + 36) + "px";
+      const lctx = loupe.getContext("2d");
+      lctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+      lctx.imageSmoothingEnabled = false;
+      lctx.fillStyle = "#16181c";
+      lctx.fillRect(0, 0, L, L);
+      const span = L / (Z * Math.max(fit.s, 0.05));
+      lctx.drawImage(src, pt[0] - span / 2, pt[1] - span / 2, span, span,
+                     0, 0, L, L);
+      lctx.strokeStyle = "rgba(70, 130, 180, 0.95)";
+      lctx.lineWidth = 1;
+      lctx.beginPath();
+      lctx.moveTo(L / 2, 0);
+      lctx.lineTo(L / 2, L);
+      lctx.moveTo(0, L / 2);
+      lctx.lineTo(L, L / 2);
+      lctx.stroke();
+    }
 
     /* -- wiring -- */
     const buttons = ["preview-back", "preview-reset", "preview-use",
                      "pv-rotl", "pv-rotr", "pv-mode-crop",
-                     "pv-mode-outline", "pv-detect", "pv-outline-clear",
-                     "pv-point-remove"];
+                     "pv-mode-outline", "pv-mode-rotate", "pv-detect",
+                     "pv-outline-clear", "pv-point-remove"];
 
     const close = (result) => {
       view.removeEventListener("pointerdown", onDown);
@@ -380,7 +480,7 @@ function previewStage(makeWarp, marginMm) {
       view.removeEventListener("pointercancel", onUp);
       window.removeEventListener("resize", layout);
       for (const id of buttons) $(id).onclick = null;
-      $("pv-fine").onchange = null;
+      $("preview-loupe").hidden = true;
       overlay.hidden = true;
       resolve(result);
     };
@@ -389,11 +489,15 @@ function previewStage(makeWarp, marginMm) {
     $("preview-reset").onclick = () => {
       if (mode === "crop") {
         crop = { x: 0, y: 0, w: src.width, h: src.height };
+        draw();
+      } else if (mode === "rotate") {
+        fine = 0;
+        rewarp();
       } else {
         outline = null;
         selected = -1;
+        draw();
       }
-      draw();
     };
     $("preview-use").onclick = () =>
       close({ angle: angleNow(), crop: { x: crop.x, y: crop.y,
@@ -403,26 +507,26 @@ function previewStage(makeWarp, marginMm) {
 
     $("pv-rotl").onclick = () => { quarter = (quarter + 3) % 4; rewarp(); };
     $("pv-rotr").onclick = () => { quarter = (quarter + 1) % 4; rewarp(); };
-    $("pv-fine").onchange = () => rewarp();
 
     $("pv-mode-crop").onclick = () => { mode = "crop"; draw(); };
     $("pv-mode-outline").onclick = () => { mode = "outline"; draw(); };
+    $("pv-mode-rotate").onclick = () => { mode = "rotate"; draw(); };
 
     $("pv-detect").onclick = () => {
-      const found = detectOnCanvas(src, warped.dstPx,
-                                   marginMm * warped.pxPerMm,
-                                   Number($("pv-thresh").value));
-      if (found) {
-        outline = found;
+      const result = detectOnCanvas(src, warped.dstPx, warped.pxPerMm);
+      if (result.ok) {
+        outline = result.polygon;
         selected = -1;
+        draw();
       } else {
+        // The desktop's contract: never fail silently — say WHY, and the
+        // quad fallback (tap to trace) stays available. Set the reason
+        // AFTER draw(), whose chrome update rewrites the hint.
+        draw();
         document.getElementById("preview-hint").textContent =
-          "No clear edge found - add margin, adjust sensitivity, or " +
-          "trace by hand";
+          "Detection: " + result.reason;
       }
-      draw();
     };
-    $("pv-thresh").onchange = () => $("pv-detect").onclick();
     $("pv-outline-clear").onclick = () => {
       outline = null;
       selected = -1;
@@ -443,7 +547,6 @@ function previewStage(makeWarp, marginMm) {
     window.addEventListener("resize", layout);
 
     overlay.hidden = false;
-    $("pv-fine").value = 0;
     rewarp().catch(reject);
   });
 }
