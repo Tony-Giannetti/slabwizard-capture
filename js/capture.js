@@ -53,10 +53,16 @@ export function localTimestamp(now = new Date()) {
 /**
  * Build the capture.json payload.
  * @param {object} form   validated form values
- * @param {object} meta   {capture_id, tenant, device}
+ * @param {object} meta   {capture_id, tenant, device, corners}
+ *
+ * `corners` (optional): the 4 slab corners marked on the prepared photo,
+ * TL TR BR BL in image px. When present, the PC rectifies at import and
+ * the slab arrives with measured dimensions; the typed width/height are
+ * the real-world size of that corner rectangle.
  */
 export function buildManifest(form, meta) {
   return {
+    ...(meta.corners ? { corners: meta.corners } : {}),
     schema: SCHEMA,
     capture_id: meta.capture_id,
     tenant: meta.tenant || "default",

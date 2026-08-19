@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<meta name="theme-color" content="#1b1d21">
+<meta name="theme-color" content="#1a1c21">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="SlabWizard">
@@ -36,6 +36,11 @@
     </div>
   </label>
   <p id="photo-meta" class="photo-meta" hidden></p>
+
+  <button id="btn-corners" class="secondary corners-btn" type="button" hidden>
+    Mark corners for auto-measure
+  </button>
+  <p id="corners-state" class="hint corners-state" hidden></p>
 
   <form id="slab-form" novalidate>
     <div class="row">
@@ -178,6 +183,18 @@
 </main>
 
 <div id="toast" class="toast" hidden></div>
+
+<!-- ─────────────────────────── Corner marking ─────────────────────────── -->
+<div id="corner-overlay" class="corner-overlay" hidden>
+  <div id="corner-prompt" class="corner-prompt"></div>
+  <canvas id="corner-canvas" class="corner-canvas"></canvas>
+  <canvas id="corner-loupe" class="corner-loupe" hidden></canvas>
+  <div class="corner-actions">
+    <button id="corner-cancel" type="button" class="secondary">Cancel</button>
+    <button id="corner-redo" type="button" class="secondary">Redo</button>
+    <button id="corner-done" type="button" class="primary" disabled>Use corners</button>
+  </div>
+</div>
 
 <script src="https://accounts.google.com/gsi/client" async defer></script>
 <script src="config.js"></script>

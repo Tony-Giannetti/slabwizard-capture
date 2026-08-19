@@ -14,6 +14,7 @@ import {
   newCaptureId, buildManifest, validateForm, describe,
 } from "./js/capture.js";
 import { preparePhoto, formatBytes } from "./js/image.js";
+import { openCornerMarker } from "./js/corners.js";
 import {
   DriveError, uploadBundle, getToken, hasValidToken, disconnect, forgetToken,
 } from "./js/drive.js";
@@ -53,6 +54,7 @@ const FIELD_IDS = {
 };
 
 let photo = null;            // {blob, width, height} — the prepared photo
+let corners = null;          // 4 marked corners in prepared-image px, or null
 let previewUrl = null;
 let syncing = false;
 let needsConsent = false;
@@ -100,6 +102,36 @@ function setPreview(blob) {
   else els.photoPreview.removeAttribute("src");
 }
 
+const cornersBtn = $("btn-corners");
+const cornersState = $("corners-state");
+
+function setCorners(value) {
+  corners = value;
+  cornersBtn.hidden = !photo;
+  cornersState.hidden = !photo;
+  if (!photo) return;
+  if (corners) {
+    cornersBtn.textContent = "Adjust corners";
+    cornersBtn.classList.add("marked");
+    cornersState.innerHTML =
+      '<span class="ok">&#10003; Corners marked</span> — the PC will ' +
+      "measure the slab off the photo. Width/height below are the real " +
+      "size of that rectangle.";
+  } else {
+    cornersBtn.textContent = "Mark corners for auto-measure";
+    cornersBtn.classList.remove("marked");
+    cornersState.textContent =
+      "Optional: tap the slab's 4 corners so the PC can flatten the " +
+      "photo and measure it — no tape-measure guessing.";
+  }
+}
+
+cornersBtn.addEventListener("click", async () => {
+  if (!photo) return;
+  const result = await openCornerMarker(photo.blob, corners);
+  if (result) setCorners(result);
+});
+
 els.photoInput.addEventListener("change", async () => {
   const file = els.photoInput.files?.[0];
   if (!file) return;
@@ -110,8 +142,10 @@ els.photoInput.addEventListener("change", async () => {
     setPreview(photo.blob);
     els.photoMeta.textContent =
       `${photo.width} × ${photo.height} px · ${formatBytes(photo.blob.size)}`;
+    setCorners(null);            // old marks belong to the old pixels
   } catch (err) {
     photo = null;
+    setCorners(null);
     setPreview(null);
     els.photoMeta.textContent = "";
     els.photoMeta.hidden = true;
@@ -156,6 +190,7 @@ els.form.addEventListener("submit", async (event) => {
       capture_id,
       tenant: settings.tenant,
       device: ensureDeviceName(),
+      corners,
     });
 
     await putCapture({
@@ -186,6 +221,7 @@ els.form.addEventListener("submit", async (event) => {
 /** Clear the per-slab fields, keep the ones that repeat down a rack. */
 function resetForm(saved) {
   photo = null;
+  setCorners(null);
   setPreview(null);
   els.photoMeta.hidden = true;
   els.photoMeta.textContent = "";

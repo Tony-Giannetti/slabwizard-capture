@@ -1,16 +1,23 @@
 /* SlabWizard Capture — a field tool. Big targets, high contrast, readable
    in sunlight with dusty hands. Dark by default because a phone in a stone
-   yard is usually at full brightness anyway. */
+   yard is usually at full brightness anyway.
+
+   Palette: SlabWizard's own dark theme, read out of
+   ui/style/style_manager.py (window/panel/button/input colours and the
+   steel-blue accent) so the phone app and the desktop app read as one
+   product. Change the desktop palette -> update these tokens. */
 
 :root {
-  --bg: #17191d;
-  --surface: #212429;
-  --surface-2: #2a2e35;
-  --line: #383d45;
-  --text: #eef1f5;
-  --muted: #98a1ad;
-  --accent: #f0a13a;
-  --accent-ink: #1a1206;
+  --bg: #16181c;            /* window_background */
+  --surface: #1a1c21;       /* panel_background  */
+  --surface-2: #2d3037;     /* button_background */
+  --line: #32343a;          /* input_border      */
+  --line-strong: #41444b;   /* button_border     */
+  --text: #c8c8cd;          /* panel_text        */
+  --muted: #8a8d94;
+  --accent: #4682b4;        /* accent (steel blue) */
+  --accent-ink: #ffffff;
+  --input-bg: #20232a;      /* input_background  */
   --ok: #4bb96f;
   --warn: #e0b341;
   --err: #e2604f;
@@ -132,7 +139,7 @@ label {
 input, select, textarea {
   font: inherit;
   color: var(--text);
-  background: var(--surface);
+  background: var(--input-bg);
   border: 1px solid var(--line);
   border-radius: 10px;
   padding: 12px 12px;
@@ -200,7 +207,7 @@ button.primary, button.secondary {
 button.primary { background: var(--accent); color: var(--accent-ink); }
 button.secondary {
   background: var(--surface-2); color: var(--text);
-  border: 1px solid var(--line);
+  border: 1px solid var(--line-strong);
 }
 button.primary:disabled, button.secondary:disabled { opacity: .5; }
 button:active { filter: brightness(1.08); }
@@ -291,4 +298,65 @@ button:active { filter: brightness(1.08); }
     from { opacity: 0; transform: translate(-50%, 8px); }
     to   { opacity: 1; transform: translate(-50%, 0); }
   }
+}
+
+
+/* ─────────────────────────── Corner marking ─────────────────────────── */
+
+.corners-btn { margin-top: 10px; }
+.corners-btn.marked { border-color: var(--ok); color: var(--ok); }
+.corners-state { margin: 6px 2px 0; }
+.corners-state .ok { color: var(--ok); }
+
+.corner-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 100;
+  background: var(--bg);
+  touch-action: none;          /* the canvas owns every gesture */
+}
+.corner-overlay[hidden] { display: none; }
+
+.corner-canvas { position: absolute; inset: 0; display: block; }
+
+.corner-prompt {
+  position: absolute;
+  top: calc(12px + env(safe-area-inset-top));
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 102;
+  max-width: 92vw;
+  padding: 10px 18px;
+  background: var(--surface);
+  border: 1px solid var(--line-strong);
+  border-radius: 22px;
+  font-size: 14.5px;
+  font-weight: 600;
+  text-align: center;
+  pointer-events: none;
+}
+
+.corner-loupe {
+  position: absolute;
+  z-index: 103;
+  border: 2px solid var(--accent);
+  border-radius: 50%;
+  box-shadow: 0 6px 22px rgba(0, 0, 0, .55);
+  pointer-events: none;
+}
+
+.corner-actions {
+  position: absolute;
+  left: 0; right: 0;
+  bottom: calc(12px + env(safe-area-inset-bottom));
+  z-index: 102;
+  display: flex;
+  gap: 10px;
+  padding: 0 14px;
+}
+.corner-actions button {
+  flex: 1 1 0;
+  margin-top: 0;
+  min-height: 52px;
+  padding: 12px;
 }

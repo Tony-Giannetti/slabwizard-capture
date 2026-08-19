@@ -101,17 +101,36 @@ Open the URL, then:
 Open Settings in the app, paste the client ID, set the **site code** if you
 run more than one yard, and tap **Connect Google Drive** once.
 
-### 4. Point the PC at the folder
+### 4. Connect the PC
 
-1. Install **Google Drive for Desktop** and sign in with the same account.
-2. Prefer **Mirror files** over *Stream files* for this folder. Streaming
-   works, but a mirrored folder means imports also work when the PC's
-   internet is down — which is exactly when someone is standing at it.
-3. Let it sync once so `My Drive/SlabWizard Captures/` exists on disk.
-4. In SlabWizard: **Inventory → From Phone…** and pick that folder. It is
-   remembered in `~/.slabwizard/capture_sync.json`.
+Two transports; `~/.slabwizard/capture_sync.json` picks with its `mode` key.
 
-After that, **From Phone…** imports everything waiting.
+**Drive-direct (`"mode": "drive"`) — the default.** SlabWizard talks to
+Google Drive itself; nothing to install on the PC. It authenticates as the
+**same web OAuth client the phone uses** — that is load-bearing, not a
+shortcut: `drive.file` grants access per *app*, and sharing one client is
+what makes both sides one app (verified empirically 2026-08-19 — a separate
+Desktop-type client in the same Cloud project could NOT see the phone's
+uploads). It also keeps everything on the non-sensitive scope: no Google
+verification, no CASA audit.
+
+Setup, once per PC:
+1. On the web client, register the loopback redirect URIs
+   `http://localhost:8731` and `http://localhost:8732` (fixed ports —
+   web clients reject unregistered redirects; two so a busy port fails over).
+2. Put the client id + secret in `capture_sync.json` with `"mode": "drive"`
+   (`CaptureSyncConfig.set_drive(...)`, or `scripts/check_drive_access.py
+   --web` to test it end-to-end first).
+3. **Inventory → From Phone…** — the first click opens the browser for a
+   one-time consent; after that the refresh token in
+   `~/.slabwizard/google_token.json` carries it.
+
+**Synced folder (`"mode": "folder"`) — the cloud-agnostic alternative.**
+Install any sync client (Google Drive for Desktop, OneDrive, Dropbox), let
+it mirror the captures folder onto disk, and point **From Phone…** at it.
+Prefer *Mirror* over *Stream* so imports work with the PC offline. No
+Google scopes on the PC at all — the right shape if a customer's shop
+already lives in OneDrive.
 
 ---
 
