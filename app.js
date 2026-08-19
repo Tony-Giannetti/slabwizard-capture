@@ -538,7 +538,20 @@ async function init() {
 
   if ("serviceWorker" in navigator) {
     try {
-      await navigator.serviceWorker.register("sw.js");
+      // Self-update: the SW uses skipWaiting + clients.claim, so when a
+      // new deploy's worker installs it takes control immediately and
+      // fires controllerchange — one silent reload swaps the whole app to
+      // the new version. Without this, a phone can serve a stale bundle
+      // until its storage is cleared by hand.
+      const hadController = Boolean(navigator.serviceWorker.controller);
+      let reloaded = false;
+      navigator.serviceWorker.addEventListener("controllerchange", () => {
+        if (!hadController || reloaded) return;   // first install: no reload
+        reloaded = true;
+        location.reload();
+      });
+      const registration = await navigator.serviceWorker.register("sw.js");
+      registration.update();      // check for a new deploy on every launch
     } catch (err) {
       console.warn("Service worker registration failed:", err);
     }
