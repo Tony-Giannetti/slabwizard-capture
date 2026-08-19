@@ -17,7 +17,7 @@
 import { openCornerMarker } from "./corners.js";
 import { rectCorners, quadCorners } from "./homography.js";
 import { warpToCanvas, cropToBlobMasked } from "./warp.js";
-import { detectSlabOutline, pixelGetter } from "./outline.js";
+import { detectSlabOutline, pixelGetter, simplifyClosed } from "./outline.js";
 
 const $ = (id) => document.getElementById(id);
 
@@ -133,10 +133,12 @@ function detectOnCanvas(canvas, dstPx, pxPerMm) {
     pixelGetter(ref.data),
     ref.k / seg.k,
     pxPerMm * ref.k,
+    { simplifyTolMm: 1.0 },       // detailed base; Smooth re-simplifies
   );
   if (!result.ok) return result;
+  const back = (pts) => pts.map(([x, y]) => [x / ref.k, y / ref.k]);
   return { ok: true, reason: null,
-           polygon: result.polygon.map(([x, y]) => [x / ref.k, y / ref.k]) };
+           polygon: back(result.polygon), base: back(result.base) };
 }
 
 /**
@@ -160,6 +162,10 @@ function previewStage(makeWarp, marginMm) {
     let src = null;
     let crop = null;
     let outline = null;              // canvas-px points or null
+    let outlineBase = null;          // detailed base the Smooth slider
+                                     // re-simplifies from (desktop's
+                                     // _outline_base_px); manual edits
+                                     // become the new base
     let selected = -1;               // outline point being edited
     let mode = "crop";
     let fit = { s: 1, ox: 0, oy: 0 };
@@ -173,6 +179,7 @@ function previewStage(makeWarp, marginMm) {
       src = warped.canvas;
       crop = { x: 0, y: 0, w: src.width, h: src.height };
       outline = null;                // old coords belong to the old frame
+      outlineBase = null;
       selected = -1;
       layout();
     }
@@ -357,6 +364,7 @@ function previewStage(makeWarp, marginMm) {
           // Start a manual trace from the slab quad — the same fallback
           // the desktop uses when detection has nothing to offer.
           outline = warped.dstPx.map((p) => [p[0], p[1]]);
+          outlineBase = outline.map((p) => [p[0], p[1]]);
         }
         const pt = nearestPoint(ix, iy);
         if (pt >= 0) {
@@ -424,6 +432,9 @@ function previewStage(makeWarp, marginMm) {
 
     function onUp() {
       const wasRot = drag && drag.kind === "rot";
+      if (drag && drag.kind === "pt" && outline) {
+        outlineBase = outline.map((p) => [p[0], p[1]]);
+      }
       drag = null;
       $("preview-loupe").hidden = true;
       if (wasRot && Math.abs(fine - shownFine) > 0.05) {
@@ -480,6 +491,7 @@ function previewStage(makeWarp, marginMm) {
       view.removeEventListener("pointercancel", onUp);
       window.removeEventListener("resize", layout);
       for (const id of buttons) $(id).onclick = null;
+      $("pv-smooth").oninput = null;
       $("preview-loupe").hidden = true;
       overlay.hidden = true;
       resolve(result);
@@ -512,12 +524,21 @@ function previewStage(makeWarp, marginMm) {
     $("pv-mode-outline").onclick = () => { mode = "outline"; draw(); };
     $("pv-mode-rotate").onclick = () => { mode = "rotate"; draw(); };
 
+    const applySmooth = () => {
+      if (!outlineBase) return;
+      const tol = Number($("pv-smooth").value);
+      $("pv-smooth-value").textContent = tol + "mm";
+      outline = simplifyClosed(outlineBase.map((q) => [q[0], q[1]]),
+                               Math.max(1, tol * warped.pxPerMm));
+      selected = -1;
+      draw();
+    };
+
     $("pv-detect").onclick = () => {
       const result = detectOnCanvas(src, warped.dstPx, warped.pxPerMm);
       if (result.ok) {
-        outline = result.polygon;
-        selected = -1;
-        draw();
+        outlineBase = result.base;
+        applySmooth();
       } else {
         // The desktop's contract: never fail silently — say WHY, and the
         // quad fallback (tap to trace) stays available. Set the reason
@@ -527,14 +548,17 @@ function previewStage(makeWarp, marginMm) {
           "Detection: " + result.reason;
       }
     };
+    $("pv-smooth").oninput = applySmooth;
     $("pv-outline-clear").onclick = () => {
       outline = null;
+      outlineBase = null;
       selected = -1;
       draw();
     };
     $("pv-point-remove").onclick = () => {
       if (outline && selected >= 0 && outline.length > 3) {
         outline.splice(selected, 1);
+        outlineBase = outline.map((p) => [p[0], p[1]]);
         selected = -1;
         draw();
       }

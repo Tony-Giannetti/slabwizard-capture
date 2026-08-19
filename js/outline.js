@@ -303,7 +303,9 @@ export function snapToSilhouette(getPixel, pts, pxPerMm,
  * @returns {{ok, polygon, confidence, reason}} polygon in refine-res px
  */
 export function detectSlabOutline(small, quadSmall, getPixelFull, upscale,
-                                  pxPerMmRefine, { bandMm = 100 } = {}) {
+                                  pxPerMmRefine,
+                                  { bandMm = 100,
+                                    simplifyTolMm = SIMPLIFY_TOL_MM } = {}) {
   const { data, width: w, height: h } = small;
   const fail = (reason) => ({ ok: false, polygon: null, confidence: 0, reason });
 
@@ -311,7 +313,15 @@ export function detectSlabOutline(small, quadSmall, getPixelFull, upscale,
   if (quadArea <= 0) return fail("reference quad is degenerate");
 
   const pxPerMmSmall = pxPerMmRefine / upscale;
-  const bandPx = Math.max(2, Math.round(bandMm * pxPerMmSmall));
+  // Scale the band to the piece: a quarter of its short side, capped at
+  // the desktop's 100mm slab default. A 300mm sample book gets ~75mm of
+  // band instead of being swallowed whole.
+  const xs = quadSmall.map((q) => q[0]), ys = quadSmall.map((q) => q[1]);
+  const shortSideMm = Math.min(Math.max(...xs) - Math.min(...xs),
+                               Math.max(...ys) - Math.min(...ys))
+                      / pxPerMmSmall;
+  const effBandMm = Math.min(bandMm, Math.max(10, shortSideMm * 0.25));
+  const bandPx = Math.max(2, Math.round(effBandMm * pxPerMmSmall));
 
   // Band masks from the quad, the desktop's erode/dilate via distances.
   const quadMask = fillPolygon(quadSmall, w, h);
@@ -359,7 +369,10 @@ export function detectSlabOutline(small, quadSmall, getPixelFull, upscale,
     else fg[i] = minDist2(px(i), fgC) < minDist2(px(i), bgC) ? 1 : 0;
   }
 
-  // Morphological close (1 px) to heal pinholes.
+  // Spatial regularisation: two 3x3 majority votes (GrabCut's smoothness
+  // term, poor man's edition) then a close to heal pinholes.
+  majority(fg, w, h);
+  majority(fg, w, h);
   morph(fg, w, h, true);
   morph(fg, w, h, false);
 
@@ -402,10 +415,32 @@ export function detectSlabOutline(small, quadSmall, getPixelFull, upscale,
                 + "% of the boundary found a colour transition");
   }
 
-  const eps = Math.max(1, SIMPLIFY_TOL_MM * pxPerMmRefine);
-  const polygon = simplifyClosed(refined, eps);
+  // Base at 1mm detail — what a smoothing slider re-simplifies from, in
+  // both directions (the desktop's _outline_base_px).
+  const base = simplifyClosed(refined, Math.max(0.5, 1.0 * pxPerMmRefine),
+                              512);
+  const eps = Math.max(1, simplifyTolMm * pxPerMmRefine);
+  const polygon = simplifyClosed(base, eps);
   if (polygon.length < 3) return fail("simplified outline is degenerate");
-  return { ok: true, polygon, confidence, reason: null };
+  return { ok: true, polygon, base, confidence, reason: null };
+}
+
+function majority(mask, w, h) {
+  const src = mask.slice();
+  for (let y = 0; y < h; y++) {
+    for (let x = 0; x < w; x++) {
+      let votes = 0;
+      for (let dy = -1; dy <= 1; dy++) {
+        for (let dx = -1; dx <= 1; dx++) {
+          const nx = x + dx, ny = y + dy;
+          if (nx >= 0 && ny >= 0 && nx < w && ny < h && src[ny * w + nx]) {
+            votes++;
+          }
+        }
+      }
+      mask[y * w + x] = votes >= 5 ? 1 : 0;
+    }
+  }
 }
 
 function morph(mask, w, h, dilate) {
