@@ -88,6 +88,12 @@ export function buildManifest(form, meta) {
   }
   if (globalThis.__lastDetect) {
     extras.debug_detect = globalThis.__lastDetect;
+    // Carry the device's own diagnostic log with the run — one saved
+    // capture then contains everything needed to replay and explain it.
+    try {
+      const log = JSON.parse(localStorage.getItem("slabwizard.diag") || "[]");
+      extras.debug_detect.log = log.slice(-14);
+    } catch { /* diagnostics only */ }
   }
   return {
     ...extras,
