@@ -586,7 +586,7 @@ export function detectSlabOutline(small, quadSmall, getPixelFull, upscale,
  * 200 mm test piece let single rays teleport across the object.
  */
 export function refineContour(getPixel, densePts, pxPerMmRefine,
-                              quadPx = null) {
+                              quadPx = null, { reachMm = null } = {}) {
   const fail = (reason) => ({ ok: false, base: null, confidence: 0, reason });
 
   // Uniform spacing: ~4px between points, bounded count.
@@ -597,7 +597,8 @@ export function refineContour(getPixel, densePts, pxPerMmRefine,
   const shortSideMm = Math.min(Math.max(...xs) - Math.min(...xs),
                                Math.max(...ys) - Math.min(...ys))
                       / pxPerMmRefine;
-  const reach = Math.max(4, shortSideMm * 0.15);
+  const reach = reachMm !== null ? reachMm
+                                 : Math.max(4, shortSideMm * 0.15);
   const { pts: snapped, confidence, valid } = snapToSilhouette(
     getPixel, evenly, pxPerMmRefine,
     Math.min(REFINE_IN_MM, reach), Math.min(REFINE_OUT_MM, reach));
@@ -733,4 +734,80 @@ export function pixelGetter(imageData) {
     }
     return out;
   };
+}
+
+
+/**
+ * Finisher for NEURAL masks. The net's boundary is already accurate and
+ * smooth — the edge-snap built for GrabCut's colour bias only adds
+ * wobble here. What the net DOES get wrong is shadow: it carves bites
+ * where the slab falls into deep shade. The reference quad already
+ * declares where the edge lives, so enforce it as a corridor: contour
+ * points farther from the quad's BOUNDARY than ~60% of the search band
+ * are not edge, and are cut (the contour reconnects straight across).
+ * Rays are still fired — but only as EVIDENCE for the confidence gate,
+ * never to move points.
+ */
+export function finishNeuralContour(getPixel, densePts, pxPerMmRefine,
+                                    quadPx) {
+  const fail = (reason) => ({ ok: false, base: null, confidence: 0, reason });
+
+  const evenly = resampleClosed(densePts, 4);
+  const xs = quadPx.map((q) => q[0]), ys = quadPx.map((q) => q[1]);
+  const shortSideMm = Math.min(Math.max(...xs) - Math.min(...xs),
+                               Math.max(...ys) - Math.min(...ys))
+                      / pxPerMmRefine;
+  const bandMm = Math.min(100, Math.max(10, shortSideMm * 0.25));
+  const corridorMm = bandMm * 0.45;
+
+  // Corridor clamp against the quad boundary (either side of it) — cuts
+  // shadow bites the net carves into dark slabs. SAFETY: corners more
+  // than slightly off would make the corridor amputate real edge, so if
+  // it wants to remove more than a quarter of the contour, trust the
+  // net's boundary instead and skip the clamp.
+  const corridorPx = corridorMm * pxPerMmRefine;
+  let kept = evenly.filter((p) => distToPolyEdge(p, quadPx) <= corridorPx);
+  if (kept.length < evenly.length * 0.75 || kept.length < 8) {
+    kept = evenly;
+  }
+
+  // Evidence-only confidence (no movement): same ray test as the snap.
+  const probe = snapToSilhouette(getPixel, kept, pxPerMmRefine, 8,
+                                 Math.min(20, bandMm * 0.3));
+  if (probe.confidence < MIN_CONFIDENCE) {
+    return fail(probe.confidence < 0.05
+      ? "no slab edge is visible near your corners - the photo must "
+        + "show the slab's actual edges against the background"
+      : "only " + Math.round(probe.confidence * 100)
+        + "% of the boundary found a colour transition");
+  }
+
+  // Light smoothing (window 3) to sand the resample steps, then the 1mm
+  // Smooth base. No snap displacement.
+  const n = kept.length;
+  const smoothed = kept.map((p, i) => {
+    const a = kept[(i - 1 + n) % n], b = kept[(i + 1) % n];
+    return [(a[0] + p[0] * 2 + b[0]) / 4, (a[1] + p[1] * 2 + b[1]) / 4];
+  });
+  const base = simplifyClosed(removeLoops(smoothed),
+                              Math.max(0.5, 1.0 * pxPerMmRefine), 512);
+  if (base.length < 3) return fail("refined outline is degenerate");
+  return { ok: true, base, confidence: probe.confidence, reason: null };
+}
+
+/** Distance from a point to the nearest edge of a polygon (px). */
+function distToPolyEdge(p, poly) {
+  let best = Infinity;
+  for (let i = 0; i < poly.length; i++) {
+    const a = poly[i], b = poly[(i + 1) % poly.length];
+    const dx = b[0] - a[0], dy = b[1] - a[1];
+    const l2 = dx * dx + dy * dy;
+    const t = l2
+      ? Math.max(0, Math.min(1,
+          ((p[0] - a[0]) * dx + (p[1] - a[1]) * dy) / l2))
+      : 0;
+    best = Math.min(best, Math.hypot(p[0] - (a[0] + t * dx),
+                                     p[1] - (a[1] + t * dy)));
+  }
+  return best;
 }

@@ -12,7 +12,7 @@
  * download, faster solve.
  */
 
-import { refineContour, fillHoles, fillPolygon, traceBoundary }
+import { finishNeuralContour, fillHoles, fillPolygon, traceBoundary }
   from "./outline.js";
 import { diagLog } from "./diag.js";
 
@@ -171,8 +171,8 @@ export async function detectSlabOutlineWorker(refine, quadRefine,
 
   // Back to refine resolution, then the shared finishing pass.
   const densePts = dense.map(([x, y]) => [x / kx, y / ky]);
-  const refined = refineContour(rgbaGetter(refine), densePts, pxPerMmRefine,
-                                quadRefine);
+  const refined = finishNeuralContour(rgbaGetter(refine), densePts,
+                                      pxPerMmRefine, quadRefine);
   if (!refined.ok) return fail(refined.reason);
   return { ok: true, polygon: refined.base, base: refined.base,
            confidence: refined.confidence, reason: null };
