@@ -22,7 +22,9 @@ export function diagLog(message) {
   try {
     const list = readAll();
     const stamp = new Date();
-    const t = String(stamp.getHours()).padStart(2, "0") + ":"
+    const t = String(stamp.getMonth() + 1).padStart(2, "0") + "-"
+            + String(stamp.getDate()).padStart(2, "0") + " "
+            + String(stamp.getHours()).padStart(2, "0") + ":"
             + String(stamp.getMinutes()).padStart(2, "0") + ":"
             + String(stamp.getSeconds()).padStart(2, "0");
     list.push(t + "  " + String(message).slice(0, 300));

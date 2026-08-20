@@ -18,7 +18,7 @@ import { openCornerMarker } from "./corners.js";
 import { rectCorners, quadCorners } from "./homography.js";
 import { warpToCanvas, cropToBlobMasked } from "./warp.js";
 import { detectSlabOutline, pixelGetter, simplifyClosed } from "./outline.js";
-import { detectSlabOutlineWorker } from "./outline_cv.js";
+import { detectSlabOutlineWorker, warmDetector } from "./outline_cv.js";
 import { diagLog } from "./diag.js";
 
 const $ = (id) => document.getElementById(id);
@@ -657,6 +657,11 @@ async function decode(blob) {
  * @param {object} formDims  {width, height} prefill from the form
  */
 export async function runRectifyFlow(photoBlob, prior, formDims) {
+  // Start the detector's 11 MB download/compile NOW, in its worker, while
+  // the operator marks corners and tapes measurements — by Detect time
+  // the runtime is warm and the button cost is just the solve.
+  warmDetector();
+
   // Step 1 — corners.
   const corners = await openCornerMarker(photoBlob, prior?.corners || null);
   if (!corners) return null;

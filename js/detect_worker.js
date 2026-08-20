@@ -57,6 +57,12 @@ self.onmessage = async (ev) => {
     self.postMessage({ type: "pong" });
     return;
   }
+  if (ev.data && ev.data.type === "warm") {
+    // Pre-load the 11 MB runtime while the operator is still marking
+    // corners — Detect then starts at the solve, not the download.
+    try { await ensureLoaded(0); } catch { /* Detect will report it */ }
+    return;
+  }
   const { id, rgba, width, height, quad, pxPerMm } = ev.data;
   try {
     const cv = await ensureLoaded(id);

@@ -79,20 +79,44 @@ async function pingWorker() {
   return w;
 }
 
+/** Start the detector loading NOW (download + WASM compile), so that by
+ * the time the operator has marked corners and entered measurements the
+ * heavy lifting is already done. Fire-and-forget; failures surface later
+ * through the normal Detect path. */
+export function warmDetector() {
+  try {
+    getWorker().postMessage({ type: "warm" });
+  } catch { /* the Detect path will report it */ }
+}
+
 async function segmentInWorker(imageData, quad, pxPerMm, onProgress) {
   const w = await pingWorker();
   return new Promise((resolve, reject) => {
     const id = nextId++;
-    const timer = setTimeout(() => {
-      pending.delete(id);
-      diagLog("detect: segmentation timed out");
-      // A detection that outlives the timeout is wedged — kill the whole
-      // worker (there is no way to interrupt WASM) and recover.
-      try { w.terminate(); } catch { /* already gone */ }
-      worker = null;
-      reject(new Error("detection timed out"));
-    }, WORKER_TIMEOUT_MS);
-    pending.set(id, { resolve, reject, timer, onProgress });
+    // STAGE-AWARE timeout: the clock restarts on every progress message
+    // from the worker. A first run spends most of its life downloading
+    // 11 MB and compiling WASM — a flat budget starved the actual solve
+    // (observed in the field: timed out at exactly 60s mid-download).
+    const entry = { resolve, reject, onProgress: null, timer: null };
+    const arm = (ms) => {
+      clearTimeout(entry.timer);
+      entry.timer = setTimeout(() => {
+        pending.delete(id);
+        diagLog("detect: stage timed out");
+        // Wedged — kill the whole worker (there is no way to interrupt
+        // WASM) and recover.
+        try { w.terminate(); } catch { /* already gone */ }
+        worker = null;
+        reject(new Error("detection timed out"));
+      }, ms);
+    };
+    entry.onProgress = (stage) => {
+      diagLog("detect: stage " + stage);
+      arm(WORKER_TIMEOUT_MS);
+      if (onProgress) onProgress(stage);
+    };
+    arm(WORKER_TIMEOUT_MS);
+    pending.set(id, entry);
     // Copy the pixels into a transferable buffer — ownership moves to the
     // worker, nothing is serialised.
     const buf = imageData.data.buffer.slice(0);
