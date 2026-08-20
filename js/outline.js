@@ -77,7 +77,7 @@ function polygonArea(pts) {
 /* ── Raster helpers (small-res segmentation stage) ─────────────────── */
 
 /** Scanline polygon fill into a Uint8Array mask. */
-function fillPolygon(quad, w, h) {
+export function fillPolygon(quad, w, h) {
   const mask = new Uint8Array(w * h);
   for (let y = 0; y < h; y++) {
     const xs = [];

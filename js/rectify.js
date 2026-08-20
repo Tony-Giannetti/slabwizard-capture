@@ -131,12 +131,21 @@ async function detectOnCanvasAsync(canvas, dstPx, pxPerMm,
     return { k, data: cctx.getImageData(0, 0, c.width, c.height) };
   })();
   try {
-    diagLog("detect: start (worker path)");
+    diagLog("detect: start (neural path)");
     const result = await detectSlabOutlineWorker(
       refine.data,
       dstPx.map(([x, y]) => [x * refine.k, y * refine.k]),
       pxPerMm * refine.k, onProgress);
-    if (!result.ok) return result;
+    if (!result.ok) {
+      // The net sees nothing salient (white pad on a white desk) — the
+      // colour-model detector sometimes still can. Cascade before
+      // refusing; keep the net's reason if both come up empty.
+      diagLog("detect: neural refused (" + result.reason + "), trying colour");
+      if (onProgress) onProgress("detecting (colour)…");
+      await new Promise((r) => setTimeout(r, 30));
+      const colour = detectOnCanvas(canvas, dstPx, pxPerMm);
+      return colour.ok ? colour : result;
+    }
     const back = (pts) => pts.map(([x, y]) => [x / refine.k, y / refine.k]);
     return { ok: true, reason: null,
              polygon: back(result.polygon), base: back(result.base) };
