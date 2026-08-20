@@ -19,6 +19,7 @@ import { rectCorners, quadCorners } from "./homography.js";
 import { warpToCanvas, cropToBlobMasked } from "./warp.js";
 import { detectSlabOutline, pixelGetter, simplifyClosed } from "./outline.js";
 import { detectSlabOutlineWorker } from "./outline_cv.js";
+import { diagLog } from "./diag.js";
 
 const $ = (id) => document.getElementById(id);
 
@@ -130,6 +131,7 @@ async function detectOnCanvasAsync(canvas, dstPx, pxPerMm,
     return { k, data: cctx.getImageData(0, 0, c.width, c.height) };
   })();
   try {
+    diagLog("detect: start (worker path)");
     const result = await detectSlabOutlineWorker(
       refine.data,
       dstPx.map(([x, y]) => [x * refine.k, y * refine.k]),
@@ -143,6 +145,7 @@ async function detectOnCanvasAsync(canvas, dstPx, pxPerMm,
     // detector is a weaker but instant answer. Detect must always
     // resolve to SOMETHING; a silent hang is the one forbidden outcome.
     console.warn("worker detection unavailable, falling back:", err);
+    diagLog("detect: fallback (" + (err && err.message ? err.message : err) + ")");
     if (onProgress) onProgress("detecting (basic)…");
     await new Promise((r) => setTimeout(r, 30));
     return detectOnCanvas(canvas, dstPx, pxPerMm);
@@ -587,6 +590,8 @@ function previewStage(makeWarp, marginMm) {
         btn.textContent = "Detect";
         btn.disabled = false;
       }
+      diagLog("detect: result ok=" + result.ok
+              + (result.ok ? "" : " (" + result.reason + ")"));
       if (result.ok) {
         outlineBase = result.base;
         applySmooth();

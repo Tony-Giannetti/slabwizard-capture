@@ -22,6 +22,7 @@ import {
   loadSettings, saveSettings, ensureDeviceName,
   recentValues, rememberValue, SAFE_NAME_RE,
 } from "./js/settings.js";
+import { diagInstall, diagList, diagClear } from "./js/diag.js";
 
 const $ = (id) => document.getElementById(id);
 
@@ -420,7 +421,15 @@ async function renderQueue() {
 
 /* ── Settings view ─────────────────────────────────────────────────────── */
 
+function fillDiagnostics() {
+  const pre = $("diag-log");
+  const entries = diagList();
+  pre.textContent = entries.length ? entries.join("
+") : "(no entries)";
+}
+
 function fillSettings() {
+  fillDiagnostics();
   const s = loadSettings();
   $("s-client-id").value = s.clientId;
   $("s-tenant").value = s.tenant;
@@ -531,6 +540,11 @@ function fillDatalists() {
 }
 
 async function init() {
+  diagInstall();
+  $("diag-clear").addEventListener("click", () => {
+    diagClear();
+    fillDiagnostics();
+  });
   updateNetDot();
   fillDatalists();
   ensureDeviceName();

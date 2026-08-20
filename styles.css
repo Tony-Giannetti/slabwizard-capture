@@ -451,3 +451,18 @@ button:active { filter: brightness(1.08); }
   font-weight: 600;
   color: var(--muted);
 }
+
+.diag { margin-top: 20px; }
+.diag-log {
+  margin: 8px 0 0;
+  padding: 10px;
+  background: var(--input-bg);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  font: 11px/1.5 ui-monospace, Consolas, monospace;
+  color: var(--muted);
+  white-space: pre-wrap;
+  word-break: break-word;
+  max-height: 40vh;
+  overflow-y: auto;
+}

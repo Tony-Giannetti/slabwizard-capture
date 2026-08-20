@@ -12,19 +12,25 @@
  */
 
 import { snapToSilhouette, simplifyClosed } from "./outline.js";
+import { diagLog } from "./diag.js";
 
 const MIN_CONFIDENCE = 0.15;       // desktop gate — keep in step
-const WORKER_TIMEOUT_MS = 120_000; // first run includes the 11 MB WASM load
+const WORKER_TIMEOUT_MS = 60_000;
+const PING_TIMEOUT_MS = 5_000;
 
 let worker = null;
 let nextId = 1;
 const pending = new Map();
 
+let pongSeen = false;
+
 function getWorker() {
   if (worker) return worker;
+  diagLog("detect: creating worker");
+  pongSeen = false;
   worker = new Worker("js/detect_worker.js");
   worker.onmessage = (ev) => {
-    if (ev.data && ev.data.type === "pong") return;
+    if (ev.data && ev.data.type === "pong") { pongSeen = true; return; }
     const entry = pending.get(ev.data.id);
     if (!entry) return;
     if (ev.data.progress) {
@@ -38,6 +44,7 @@ function getWorker() {
     entry.resolve(ev.data);
   };
   worker.onerror = (err) => {
+    diagLog("detect: worker error " + (err.message || err));
     // The worker itself died — fail everything in flight and start fresh
     // next time.
     for (const entry of pending.values()) {
@@ -51,12 +58,34 @@ function getWorker() {
   return worker;
 }
 
-function segmentInWorker(imageData, quad, pxPerMm, onProgress) {
+/** Prove the worker is alive at all before trusting it with a job —
+ * a script that failed to parse or load answers nothing, and 5 seconds
+ * of silence is a much better failure than a minute of "Detecting…". */
+async function pingWorker() {
+  const w = getWorker();
+  if (pongSeen) return w;
+  w.postMessage({ type: "ping" });
+  const t0 = Date.now();
+  while (!pongSeen) {
+    if (Date.now() - t0 > PING_TIMEOUT_MS) {
+      diagLog("detect: worker never answered ping");
+      try { w.terminate(); } catch { /* gone */ }
+      worker = null;
+      throw new Error("detector worker is not responding");
+    }
+    await new Promise((r) => setTimeout(r, 100));
+  }
+  diagLog("detect: worker alive");
+  return w;
+}
+
+async function segmentInWorker(imageData, quad, pxPerMm, onProgress) {
+  const w = await pingWorker();
   return new Promise((resolve, reject) => {
     const id = nextId++;
-    const w = getWorker();
     const timer = setTimeout(() => {
       pending.delete(id);
+      diagLog("detect: segmentation timed out");
       // A detection that outlives the timeout is wedged — kill the whole
       // worker (there is no way to interrupt WASM) and recover.
       try { w.terminate(); } catch { /* already gone */ }
