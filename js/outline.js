@@ -396,6 +396,15 @@ export function snapToSilhouette(getPixel, pts, pxPerMm,
   // Circular smoothing of the offset field (win=7) — kills ray-to-ray
   // jitter without rounding corners (points move only along their normal).
   const win = 7, pad = win >> 1;
+  // An INVALID ray means "no edge evidence here" — black-on-black, glare,
+  // a sheen the segmentation mistook for background. Keeping offset 0
+  // there preserves the segmentation's WRONG boundary (the bite carved
+  // out of a glossy black cover). Instead, bridge invalid runs by
+  // interpolating the offset field between the nearest VALID rays on
+  // either side (circular): where there is no evidence, the evidenced
+  // neighbours speak for the edge.
+  interpolateInvalid(offsets, valid);
+
   const smoothed = new Float64Array(n);
   for (let i = 0; i < n; i++) {
     let s = 0;
@@ -409,7 +418,31 @@ export function snapToSilhouette(getPixel, pts, pxPerMm,
   ]);
   let hits = 0;
   for (let i = 0; i < n; i++) hits += valid[i];
-  return { pts: refined, confidence: hits / n };
+  return { pts: refined, confidence: hits / n, valid };
+}
+
+/** Linear circular interpolation of `offsets` across runs of invalid
+ * rays, anchored on the valid rays either side. All-invalid → zeros. */
+function interpolateInvalid(offsets, valid) {
+  const n = offsets.length;
+  let anyValid = false;
+  for (let i = 0; i < n; i++) if (valid[i]) { anyValid = true; break; }
+  if (!anyValid) return;
+  let i = 0;
+  while (i < n) {
+    if (valid[i]) { i++; continue; }
+    // Run of invalid [i .. j-1]; prev/next valid circularly.
+    let j = i;
+    while (j < n && !valid[j]) j++;
+    const prev = (i - 1 + n) % n;
+    const next = j % n;
+    const runLen = j - i;
+    for (let k = 0; k < runLen; k++) {
+      const t = (k + 1) / (runLen + 1);
+      offsets[i + k] = offsets[prev] * (1 - t) + offsets[next] * t;
+    }
+    i = j;
+  }
 }
 
 /* ── The full pipeline ─────────────────────────────────────────────── */
@@ -529,7 +562,9 @@ export function detectSlabOutline(small, quadSmall, getPixelFull, upscale,
   if (!dense) return fail("no usable foreground boundary");
 
   const densePts = dense.map(([x, y]) => [x * upscale, y * upscale]);
-  const refined = refineContour(getPixelFull, densePts, pxPerMmRefine);
+  const quadRefine = quadSmall.map(([x, y]) => [x * upscale, y * upscale]);
+  const refined = refineContour(getPixelFull, densePts, pxPerMmRefine,
+                                quadRefine);
   if (!refined.ok) return fail(refined.reason);
 
   const eps = Math.max(1, simplifyTolMm * pxPerMmRefine);
@@ -550,7 +585,8 @@ export function detectSlabOutline(small, quadSmall, getPixelFull, upscale,
  * self-crossings in one field capture), and a 45 mm snap reach on a
  * 200 mm test piece let single rays teleport across the object.
  */
-export function refineContour(getPixel, densePts, pxPerMmRefine) {
+export function refineContour(getPixel, densePts, pxPerMmRefine,
+                              quadPx = null) {
   const fail = (reason) => ({ ok: false, base: null, confidence: 0, reason });
 
   // Uniform spacing: ~4px between points, bounded count.
@@ -562,7 +598,7 @@ export function refineContour(getPixel, densePts, pxPerMmRefine) {
                                Math.max(...ys) - Math.min(...ys))
                       / pxPerMmRefine;
   const reach = Math.max(4, shortSideMm * 0.15);
-  const { pts: snapped, confidence } = snapToSilhouette(
+  const { pts: snapped, confidence, valid } = snapToSilhouette(
     getPixel, evenly, pxPerMmRefine,
     Math.min(REFINE_IN_MM, reach), Math.min(REFINE_OUT_MM, reach));
 
@@ -574,13 +610,70 @@ export function refineContour(getPixel, densePts, pxPerMmRefine) {
         + "% of the boundary found a colour transition");
   }
 
+  // PRIOR ENFORCEMENT. Segmentation carves "bites" out of glossy pieces
+  // wherever sheen resembles the background (observed on a black book —
+  // and the desktop pipeline does the very same). Ray validity tells us
+  // which contour points carry actual edge evidence; a point WITHOUT
+  // evidence that dives deeper into the reference quad than its
+  // evidenced neighbours is the segmentation guessing — delete it, and
+  // let the contour reconnect straight between evidenced anchors.
+  let kept = snapped;
+  if (quadPx && snapped.length > 8) {
+    const depth = snapped.map((p) => inwardDepth(p, quadPx) / pxPerMmRefine);
+    const n = snapped.length;
+    const tolMm = 6;
+    kept = snapped.filter((p, i) => {
+      if (valid[i]) return true;
+      // Nearest valid neighbours' depth, circularly.
+      let before = i, after = i;
+      for (let s = 1; s < n; s++) {
+        const b = (i - s + n) % n;
+        if (valid[b]) { before = b; break; }
+      }
+      for (let s = 1; s < n; s++) {
+        const a = (i + s) % n;
+        if (valid[a]) { after = a; break; }
+      }
+      const anchor = Math.max(depth[before], depth[after]);
+      return depth[i] <= anchor + tolMm;
+    });
+    if (kept.length < 8) kept = snapped;   // pathological — keep evidence
+  }
+
   // Any residual folds are local — cut them out, then build the detail
   // base the Smooth slider re-simplifies from (desktop's 1mm base).
-  const untangled = removeLoops(snapped);
+  const untangled = removeLoops(kept);
   const base = simplifyClosed(untangled,
                               Math.max(0.5, 1.0 * pxPerMmRefine), 512);
   if (base.length < 3) return fail("refined outline is degenerate");
   return { ok: true, base, confidence, reason: null };
+}
+
+/** Depth of a point INSIDE a polygon (px): 0 outside, else the distance
+ * to the nearest edge. */
+function inwardDepth(p, poly) {
+  let inside = false;
+  for (let i = 0, j = poly.length - 1; i < poly.length; j = i++) {
+    const [xi, yi] = poly[i], [xj, yj] = poly[j];
+    if ((yi > p[1]) !== (yj > p[1])
+        && p[0] < ((xj - xi) * (p[1] - yi)) / (yj - yi) + xi) {
+      inside = !inside;
+    }
+  }
+  if (!inside) return 0;
+  let best = Infinity;
+  for (let i = 0; i < poly.length; i++) {
+    const a = poly[i], b = poly[(i + 1) % poly.length];
+    const dx = b[0] - a[0], dy = b[1] - a[1];
+    const l2 = dx * dx + dy * dy;
+    const t = l2
+      ? Math.max(0, Math.min(1,
+          ((p[0] - a[0]) * dx + (p[1] - a[1]) * dy) / l2))
+      : 0;
+    best = Math.min(best, Math.hypot(p[0] - (a[0] + t * dx),
+                                     p[1] - (a[1] + t * dy)));
+  }
+  return best;
 }
 
 function majority(mask, w, h) {

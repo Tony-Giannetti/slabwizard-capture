@@ -145,7 +145,8 @@ export async function detectSlabOutlineWorker(refine, quadRefine,
 
   // Same finishing pass as the fallback detector: resample, snap with
   // piece-scaled reach, untangle, gate, 1mm base.
-  const refined = refineContour(rgbaGetter(refine), dense, pxPerMmRefine);
+  const refined = refineContour(rgbaGetter(refine), dense, pxPerMmRefine,
+                                quadRefine);
   if (!refined.ok) return fail(refined.reason);
   return { ok: true, polygon: refined.base, base: refined.base,
            confidence: refined.confidence, reason: null };
