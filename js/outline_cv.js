@@ -189,8 +189,11 @@ export function detectSlabOutlineCv(cv, refine, quadRefine, pxPerMmRefine,
     const { pts: refined, confidence } =
       snapToSilhouette(getPixel, dense, pxPerMmRefine);
     if (confidence < MIN_CONFIDENCE) {
-      return fail("only " + Math.round(confidence * 100)
-                  + "% of the boundary found a colour transition");
+      return fail(confidence < 0.05
+        ? "no slab edge is visible near your corners - the photo must "
+          + "show the slab's actual edges against the background"
+        : "only " + Math.round(confidence * 100)
+          + "% of the boundary found a colour transition");
     }
 
     const base = simplifyClosed(refined,
