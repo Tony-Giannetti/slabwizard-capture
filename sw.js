@@ -8,7 +8,7 @@
 // Bumped automatically by tools/deploy_pages.py on every deploy that
 // changes a file. It has to change, or `activate` keeps the old cache and a
 // phone that already has the app serves yesterday's config.js forever.
-const CACHE = "slabwizard-capture-v14";
+const CACHE = "slabwizard-capture-v15";
 
 const SHELL = [
   "./",
@@ -26,6 +26,9 @@ const SHELL = [
   "./js/warp.js",
   "./js/rectify.js",
   "./js/outline.js",
+  "./js/outline_cv.js",
+  "./js/cv_segment.js",
+  "./js/detect_worker.js",
   "./js/drive.js",
   "./icons/icon-192.png",
   "./icons/icon-512.png",

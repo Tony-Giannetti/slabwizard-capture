@@ -18,7 +18,7 @@ import { openCornerMarker } from "./corners.js";
 import { rectCorners, quadCorners } from "./homography.js";
 import { warpToCanvas, cropToBlobMasked } from "./warp.js";
 import { detectSlabOutline, pixelGetter, simplifyClosed } from "./outline.js";
-import { loadOpenCV, detectSlabOutlineCv } from "./outline_cv.js";
+import { detectSlabOutlineWorker } from "./outline_cv.js";
 
 const $ = (id) => document.getElementById(id);
 
@@ -129,9 +129,8 @@ async function detectOnCanvasAsync(canvas, dstPx, pxPerMm) {
     return { k, data: cctx.getImageData(0, 0, c.width, c.height) };
   })();
   try {
-    const cv = await loadOpenCV();
-    const result = detectSlabOutlineCv(
-      cv, refine.data,
+    const result = await detectSlabOutlineWorker(
+      refine.data,
       dstPx.map(([x, y]) => [x * refine.k, y * refine.k]),
       pxPerMm * refine.k);
     if (!result.ok) return result;
