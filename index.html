@@ -186,7 +186,7 @@
   </details>
 
   <p class="hint version">SlabWizard Capture
-    <span id="app-version">v17</span> &middot; bundle schema 1</p>
+    <span id="app-version">v18</span> &middot; bundle schema 1</p>
 </main>
 
 <div id="toast" class="toast" hidden></div>
@@ -304,6 +304,41 @@
   </div>
 </div>
 
+<script>
+// Inline, module-independent error trap. If ANY module in app.js's import
+// graph fails to load or parse, every button silently dies — this banner
+// is the difference between "the app is broken" and "the app looks fine
+// but nothing works". It must not depend on anything that can break.
+(function () {
+  var shown = false;
+  function banner(msg) {
+    try {
+      var log = JSON.parse(localStorage.getItem("slabwizard.diag") || "[]");
+      log.push(new Date().toTimeString().slice(0, 8) + "  FATAL " + msg);
+      localStorage.setItem("slabwizard.diag", JSON.stringify(log.slice(-40)));
+    } catch (e) { /* still show the banner */ }
+    if (shown) return;
+    shown = true;
+    var el = document.createElement("div");
+    el.style.cssText = "position:fixed;top:0;left:0;right:0;z-index:9999;" +
+      "background:#7f1d1d;color:#fff;padding:10px 14px;font:13px/1.4 " +
+      "system-ui,sans-serif;white-space:pre-wrap;word-break:break-word";
+    el.textContent = "App error - tell Tony this message:\n" + msg;
+    document.body ? document.body.appendChild(el)
+                  : addEventListener("DOMContentLoaded", function () {
+                      document.body.appendChild(el);
+                    });
+  }
+  addEventListener("error", function (ev) {
+    banner((ev.message || "script failed to load") + " @ " +
+           String(ev.filename || "?").split("/").pop() + ":" + (ev.lineno || 0));
+  }, true);
+  addEventListener("unhandledrejection", function (ev) {
+    var r = ev.reason;
+    banner("unhandled: " + (r && r.message ? r.message : String(r)));
+  });
+})();
+</script>
 <script src="https://accounts.google.com/gsi/client" async defer></script>
 <script src="config.js"></script>
 <script src="app.js" type="module"></script>

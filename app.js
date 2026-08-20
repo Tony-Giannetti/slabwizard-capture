@@ -424,8 +424,7 @@ async function renderQueue() {
 function fillDiagnostics() {
   const pre = $("diag-log");
   const entries = diagList();
-  pre.textContent = entries.length ? entries.join("
-") : "(no entries)";
+  pre.textContent = entries.length ? entries.join("\n") : "(no entries)";
 }
 
 function fillSettings() {

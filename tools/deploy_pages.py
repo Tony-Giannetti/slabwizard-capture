@@ -125,6 +125,54 @@ def bump_cache_version() -> str:
     return "v%d" % version
 
 
+def verify_modules() -> None:
+    """Abort the deploy unless every ES module parses AS A MODULE.
+
+    ``node --check foo.js`` parses CommonJS and has passed files with real
+    syntax errors; copying to .mjs forces the ESM parse goal. One broken
+    module kills the entire app (dead buttons, no errors on screen), so
+    nothing ships unverified.
+    """
+    import tempfile
+    files = [MOBILE / "app.js", MOBILE / "config.js",
+             *sorted((MOBILE / "js").glob("*.js"))]
+    with tempfile.TemporaryDirectory() as tmp:
+        for f in files:
+            probe = Path(tmp) / (f.stem + ".mjs")
+            probe.write_text(f.read_text(encoding="utf-8"), encoding="utf-8")
+            r = subprocess.run(["node", "--check", str(probe)],
+                               capture_output=True, text=True)
+            if r.returncode != 0:
+                raise SystemExit(
+                    "DEPLOY ABORTED - %s does not parse as an ES module:\n%s"
+                    % (f.name, r.stderr.strip()))
+    print("verified %d modules parse as ESM" % len(files))
+
+
+def generate_shell() -> None:
+    """Regenerate sw.js's SHELL list from the actual file tree.
+
+    A hand-maintained list drifts (js/diag.js shipped outside it); a file
+    missing from the shell escapes the atomic versioned precache and can
+    mix versions with the rest of the module graph.
+    """
+    entries = ['"./"', '"./index.html"', '"./styles.css"', '"./app.js"',
+               '"./config.js"', '"./manifest.webmanifest"']
+    entries += sorted('"./js/%s"' % f.name
+                      for f in (MOBILE / "js").glob("*.js"))
+    entries += sorted('"./icons/%s"' % f.name
+                      for f in (MOBILE / "icons").glob("*.png"))
+    body = ("const SHELL = [\n"
+            + "".join("  %s,\n" % e for e in entries)
+            + "];")
+    sw = MOBILE / "sw.js"
+    text = sw.read_text(encoding="utf-8")
+    new_text = re.sub(r"const SHELL = \[.*?\];", body, text, flags=re.S)
+    if new_text == text and "const SHELL" not in text:
+        print("  WARNING: SHELL list not found in sw.js")
+    sw.write_text(new_text, encoding="utf-8")
+
+
 def ensure_clone() -> None:
     if (DEPLOY / ".git").is_dir():
         return
@@ -154,6 +202,8 @@ def main() -> int:
         print("\n--dry-run: nothing copied, pushed, or version-bumped.")
         return 0
 
+    verify_modules()
+    generate_shell()
     # Bump BEFORE the copy so the new version ships in this same push.
     print(f"Service worker cache -> {bump_cache_version()}")
     sync(copy=True)
