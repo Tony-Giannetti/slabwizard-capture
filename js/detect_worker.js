@@ -23,7 +23,11 @@ function ensureSession(id) {
     importScripts("../vendor/ort/ort.wasm.min.js", "segnet_pre.js");
     // GitHub Pages sends no COOP/COEP headers, so no SharedArrayBuffer:
     // run the WASM single-threaded (onnxruntime falls back cleanly).
-    ort.env.wasm.wasmPaths = "../vendor/ort/";
+    // ABSOLUTE path: ort resolves a relative wasmPaths against its own
+    // script directory, which doubled to vendor/vendor/ort/ and 404'd —
+    // silently downgrading every detection to the colour fallback.
+    ort.env.wasm.wasmPaths = new URL("../vendor/ort/",
+                                     self.location.href).href;
     ort.env.wasm.numThreads = 1;
     self.postMessage({ id, progress: "starting detector…" });
     const session = await ort.InferenceSession.create(
