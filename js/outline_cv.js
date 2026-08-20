@@ -11,7 +11,7 @@
  * worker's runtime cache keeps it for every use after the first.
  */
 
-import { snapToSilhouette, simplifyClosed } from "./outline.js";
+import { refineContour } from "./outline.js";
 import { diagLog } from "./diag.js";
 
 const MIN_CONFIDENCE = 0.15;       // desktop gate — keep in step
@@ -143,21 +143,12 @@ export async function detectSlabOutlineWorker(refine, quadRefine,
     dense.push([seg.dense[i], seg.dense[i + 1]]);
   }
 
-  const getPixel = rgbaGetter(refine);
-  const { pts: refined, confidence } =
-    snapToSilhouette(getPixel, dense, pxPerMmRefine);
-  if (confidence < MIN_CONFIDENCE) {
-    return fail(confidence < 0.05
-      ? "no slab edge is visible near your corners - the photo must "
-        + "show the slab's actual edges against the background"
-      : "only " + Math.round(confidence * 100)
-        + "% of the boundary found a colour transition");
-  }
-
-  const base = simplifyClosed(refined,
-                              Math.max(0.5, 1.0 * pxPerMmRefine), 512);
-  if (base.length < 3) return fail("simplified outline is degenerate");
-  return { ok: true, polygon: base, base, confidence, reason: null };
+  // Same finishing pass as the fallback detector: resample, snap with
+  // piece-scaled reach, untangle, gate, 1mm base.
+  const refined = refineContour(rgbaGetter(refine), dense, pxPerMmRefine);
+  if (!refined.ok) return fail(refined.reason);
+  return { ok: true, polygon: refined.base, base: refined.base,
+           confidence: refined.confidence, reason: null };
 }
 
 function rgbaGetter({ data, width, height }) {

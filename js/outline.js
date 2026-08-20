@@ -60,7 +60,9 @@ export function simplifyClosed(points, epsilon, maxPoints = 128) {
     epsilon *= 1.5;
     out = simplify([...out, out[0]], epsilon).slice(0, -1);
   }
-  return out;
+  // Douglas-Peucker can fold a simple polygon into a crossing; every
+  // simplify (detection AND the Smooth slider) ends untangled.
+  return out.length >= 5 ? removeLoops(out) : out;
 }
 
 function polygonArea(pts) {
@@ -180,36 +182,155 @@ const minDist2 = (px, centres) => {
   return best;
 };
 
-/** Moore-neighbour boundary trace of a labelled region. Dense points. */
-function traceBoundary(region, w, h) {
-  let start = -1;
-  for (let i = 0; i < w * h; i++) {
-    if (region[i]) { start = i; break; }
+/** Fill internal holes: flood the OUTSIDE from the raster border; any
+ * zero pixel the flood never reaches is enclosed by the region. A holey
+ * mask hands the tracer a fractal boundary. */
+export function fillHoles(region, w, h) {
+  const outside = new Uint8Array(w * h);
+  const queue = [];
+  const push = (x, y) => {
+    const i = y * w + x;
+    if (!region[i] && !outside[i]) { outside[i] = 1; queue.push(i); }
+  };
+  for (let x = 0; x < w; x++) { push(x, 0); push(x, h - 1); }
+  for (let y = 0; y < h; y++) { push(0, y); push(w - 1, y); }
+  while (queue.length) {
+    const i = queue.pop();
+    const x = i % w, y = (i / w) | 0;
+    if (x > 0) push(x - 1, y);
+    if (x < w - 1) push(x + 1, y);
+    if (y > 0) push(x, y - 1);
+    if (y < h - 1) push(x, y + 1);
   }
-  if (start < 0) return null;
-  const sx = start % w, sy = (start / w) | 0;
-  const dirs = [[1, 0], [1, 1], [0, 1], [-1, 1],
-                [-1, 0], [-1, -1], [0, -1], [1, -1]];
-  const inside = (x, y) =>
-    x >= 0 && y >= 0 && x < w && y < h && region[y * w + x];
-  const pts = [];
-  let cx = sx, cy = sy, dir = 6;              // entered heading "up"
-  const maxSteps = w * h * 4;
-  for (let step = 0; step < maxSteps; step++) {
-    pts.push([cx, cy]);
-    let found = false;
-    for (let t = 0; t < 8; t++) {
-      const d = (dir + 6 + t) % 8;            // start looking backwards-left
-      const nx = cx + dirs[d][0], ny = cy + dirs[d][1];
-      if (inside(nx, ny)) {
-        cx = nx; cy = ny; dir = d; found = true;
-        break;
+  for (let i = 0; i < w * h; i++) {
+    if (!region[i] && !outside[i]) region[i] = 1;
+  }
+}
+
+/** Boundary of a binary region via MARCHING SQUARES — the previous
+ * Moore-neighbour walk emitted paths with dozens of self-intersections
+ * (the "scribble" outlines seen in the field: 91 crossings in one
+ * 96-point polygon). Marching squares yields simple closed loops by
+ * construction; the longest loop is the outline. Dense midpoint vertices,
+ * ordered. */
+export function traceBoundary(region, w, h) {
+  const at = (x, y) =>
+    (x >= 0 && y >= 0 && x < w && y < h && region[y * w + x]) ? 1 : 0;
+  // For each cell (corner-sampled 2x2), the case index picks the crossing
+  // segments. Segment endpoints are edge midpoints in pixel coords.
+  const segsFor = (x, y) => {
+    const tl = at(x, y), tr = at(x + 1, y);
+    const bl = at(x, y + 1), br = at(x + 1, y + 1);
+    const idx = tl * 8 + tr * 4 + br * 2 + bl;
+    const T = [x + 0.5, y], R = [x + 1, y + 0.5];
+    const B = [x + 0.5, y + 1], L = [x, y + 0.5];
+    switch (idx) {
+      case 1: return [[B, L]];
+      case 2: return [[R, B]];
+      case 3: return [[R, L]];
+      case 4: return [[T, R]];
+      case 5: return [[T, R], [B, L]];      // saddle
+      case 6: return [[T, B]];
+      case 7: return [[T, L]];
+      case 8: return [[L, T]];
+      case 9: return [[B, T]];
+      case 10: return [[L, T], [R, B]];     // saddle
+      case 11: return [[R, T]];
+      case 12: return [[L, R]];
+      case 13: return [[B, R]];
+      case 14: return [[L, B]];
+      default: return [];
+    }
+  };
+  // Collect all segments keyed by start point, then chain into loops.
+  const key = (p) => p[0] * 2 + "," + p[1] * 2;
+  const byStart = new Map();
+  for (let y = -1; y < h; y++) {
+    for (let x = -1; x < w; x++) {
+      for (const [a, b] of segsFor(x, y)) {
+        byStart.set(key(a), { a, b, used: false });
       }
     }
-    if (!found) break;                        // single-pixel region
-    if (cx === sx && cy === sy && pts.length > 2) break;
   }
-  return pts.length >= 8 ? pts : null;
+  let best = null;
+  for (const seg of byStart.values()) {
+    if (seg.used) continue;
+    const loop = [];
+    let cur = seg;
+    while (cur && !cur.used) {
+      cur.used = true;
+      loop.push(cur.a);
+      cur = byStart.get(key(cur.b));
+    }
+    if (loop.length >= 8 && (!best || loop.length > best.length)) {
+      best = loop;
+    }
+  }
+  return best;
+}
+
+/** Resample a closed polyline to uniform arc-length spacing. The traced
+ * contour has ~half-pixel point spacing; snapping points that close
+ * together folds the polygon (neighbouring normals disagree more than the
+ * spacing can absorb). */
+export function resampleClosed(pts, spacing) {
+  const n = pts.length;
+  let perimeter = 0;
+  const lens = [];
+  for (let i = 0; i < n; i++) {
+    const a = pts[i], b = pts[(i + 1) % n];
+    const l = Math.hypot(b[0] - a[0], b[1] - a[1]);
+    lens.push(l);
+    perimeter += l;
+  }
+  const count = Math.max(16, Math.round(perimeter / spacing));
+  const step = perimeter / count;
+  const out = [];
+  let seg = 0, into = 0;
+  for (let k = 0; k < count; k++) {
+    const target = k * step;
+    while (into + lens[seg] < target) { into += lens[seg]; seg = (seg + 1) % n; }
+    const a = pts[seg], b = pts[(seg + 1) % n];
+    const t = lens[seg] ? (target - into) / lens[seg] : 0;
+    out.push([a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1]) * t]);
+  }
+  return out;
+}
+
+/** Remove self-intersections by cutting out the smaller of the two loops
+ * a crossing creates. Snap offsets are local, so folds are local — a few
+ * cuts restore a simple polygon without moving the true edge. */
+export function removeLoops(poly, maxPasses = 24) {
+  const cross = (o, a, b) =>
+    (a[0] - o[0]) * (b[1] - o[1]) - (a[1] - o[1]) * (b[0] - o[0]);
+  let pts = poly.slice();
+  for (let pass = 0; pass < maxPasses; pass++) {
+    const n = pts.length;
+    if (n < 5) break;
+    let cut = null;
+    outer:
+    for (let i = 0; i < n; i++) {
+      const a = pts[i], b = pts[(i + 1) % n];
+      for (let j = i + 2; j < n; j++) {
+        if (i === 0 && j === n - 1) continue;
+        const c = pts[j], d = pts[(j + 1) % n];
+        if (cross(a, b, c) * cross(a, b, d) < 0
+            && cross(c, d, a) * cross(c, d, b) < 0) {
+          cut = [i, j];
+          break outer;
+        }
+      }
+    }
+    if (!cut) return pts;
+    const [i, j] = cut;
+    const inner = j - i;                       // points strictly inside
+    if (inner <= n - inner) {
+      pts = pts.slice(0, i + 1).concat(pts.slice(j + 1));
+    } else {
+      pts = pts.slice(i + 1, j + 1);
+    }
+  }
+  return pts;
 }
 
 /* ── Stage 3: edge-snap refinement (port of _snap_to_silhouette) ───── */
@@ -403,13 +524,48 @@ export function detectSlabOutline(small, quadSmall, getPixelFull, upscale,
                 + "x the reference - contrast too low?");
   }
 
+  fillHoles(region, w, h);
   const dense = traceBoundary(region, w, h);
   if (!dense) return fail("no usable foreground boundary");
 
-  // Refinement at high resolution, exactly the desktop's pass.
   const densePts = dense.map(([x, y]) => [x * upscale, y * upscale]);
-  const { pts: refined, confidence } =
-    snapToSilhouette(getPixelFull, densePts, pxPerMmRefine);
+  const refined = refineContour(getPixelFull, densePts, pxPerMmRefine);
+  if (!refined.ok) return fail(refined.reason);
+
+  const eps = Math.max(1, simplifyTolMm * pxPerMmRefine);
+  const polygon = simplifyClosed(refined.base, eps);
+  if (polygon.length < 3) return fail("simplified outline is degenerate");
+  return { ok: true, polygon, base: refined.base,
+           confidence: refined.confidence, reason: null };
+}
+
+/**
+ * The shared contour finishing pass, used by BOTH detectors (WASM GrabCut
+ * and the pure-JS fallback): uniform resampling, edge-snap with reach
+ * scaled to the piece, circular smoothing, loop removal, confidence gate,
+ * and the 1 mm detail base for the Smooth slider.
+ *
+ * Order matters, and each stage exists because of an observed failure:
+ * sub-pixel point spacing folded the polygon at the snap stage (91
+ * self-crossings in one field capture), and a 45 mm snap reach on a
+ * 200 mm test piece let single rays teleport across the object.
+ */
+export function refineContour(getPixel, densePts, pxPerMmRefine) {
+  const fail = (reason) => ({ ok: false, base: null, confidence: 0, reason });
+
+  // Uniform spacing: ~4px between points, bounded count.
+  const evenly = resampleClosed(densePts, 4);
+
+  // Snap reach scaled to the piece: never more than 15% of the short side.
+  const xs = evenly.map((p) => p[0]), ys = evenly.map((p) => p[1]);
+  const shortSideMm = Math.min(Math.max(...xs) - Math.min(...xs),
+                               Math.max(...ys) - Math.min(...ys))
+                      / pxPerMmRefine;
+  const reach = Math.max(4, shortSideMm * 0.15);
+  const { pts: snapped, confidence } = snapToSilhouette(
+    getPixel, evenly, pxPerMmRefine,
+    Math.min(REFINE_IN_MM, reach), Math.min(REFINE_OUT_MM, reach));
+
   if (confidence < MIN_CONFIDENCE) {
     return fail(confidence < 0.05
       ? "no slab edge is visible near your corners - the photo must "
@@ -418,14 +574,13 @@ export function detectSlabOutline(small, quadSmall, getPixelFull, upscale,
         + "% of the boundary found a colour transition");
   }
 
-  // Base at 1mm detail — what a smoothing slider re-simplifies from, in
-  // both directions (the desktop's _outline_base_px).
-  const base = simplifyClosed(refined, Math.max(0.5, 1.0 * pxPerMmRefine),
-                              512);
-  const eps = Math.max(1, simplifyTolMm * pxPerMmRefine);
-  const polygon = simplifyClosed(base, eps);
-  if (polygon.length < 3) return fail("simplified outline is degenerate");
-  return { ok: true, polygon, base, confidence, reason: null };
+  // Any residual folds are local — cut them out, then build the detail
+  // base the Smooth slider re-simplifies from (desktop's 1mm base).
+  const untangled = removeLoops(snapped);
+  const base = simplifyClosed(untangled,
+                              Math.max(0.5, 1.0 * pxPerMmRefine), 512);
+  if (base.length < 3) return fail("refined outline is degenerate");
+  return { ok: true, base, confidence, reason: null };
 }
 
 function majority(mask, w, h) {
