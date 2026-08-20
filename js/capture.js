@@ -86,6 +86,9 @@ export function buildManifest(form, meta) {
       };
     }
   }
+  if (globalThis.__lastDetect) {
+    extras.debug_detect = globalThis.__lastDetect;
+  }
   return {
     ...extras,
     schema: SCHEMA,

@@ -144,9 +144,15 @@ export async function detectSlabOutlineWorker(refine, quadRefine,
   const quadMask = fillPolygon(quadNet, S, S);
   const allowed = dilate(quadMask, S, S, bandNet);
 
+  // PRIOR-WEIGHTED threshold. A slab area in shadow scores uncertain
+  // (~0.3-0.5) while true background scores near zero — a flat 0.5 cut
+  // carved shadow "bites" out of dark slabs. The operator's corners are
+  // strong evidence: inside the quad, believe the net at 0.25; outside,
+  // demand 0.6.
   const mask = new Uint8Array(S * S);
   for (let i = 0; i < S * S; i++) {
-    mask[i] = prob[i] > 0.5 && allowed[i] ? 1 : 0;
+    const cut = quadMask[i] ? 0.25 : 0.6;
+    mask[i] = prob[i] > cut && allowed[i] ? 1 : 0;
   }
 
   // Largest component seeded from the quad's interior.

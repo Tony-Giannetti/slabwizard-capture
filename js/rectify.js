@@ -601,6 +601,23 @@ function previewStage(makeWarp, marginMm) {
       }
       diagLog("detect: result ok=" + result.ok
               + (result.ok ? "" : " (" + result.reason + ")"));
+      // Record the run so a saved capture carries it: with the photo,
+      // corners and this, a desktop harness can replay EXACTLY what this
+      // phone computed — no more reproduction guesswork.
+      try {
+        globalThis.__lastDetect = {
+          version: document.getElementById("app-version")?.textContent,
+          when: new Date().toISOString(),
+          ok: result.ok,
+          reason: result.reason || null,
+          outline_px: result.ok
+            ? simplifyClosed(result.base, 3 * warped.pxPerMm)
+                .map(([x, y]) => [Math.round(x), Math.round(y)])
+            : null,
+          px_per_mm: warped.pxPerMm,
+          canvas: [src.width, src.height],
+        };
+      } catch { /* diagnostics only */ }
       if (result.ok) {
         outlineBase = result.base;
         applySmooth();

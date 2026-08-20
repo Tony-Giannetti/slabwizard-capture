@@ -782,11 +782,15 @@ export function finishNeuralContour(getPixel, densePts, pxPerMmRefine,
         + "% of the boundary found a colour transition");
   }
 
+  // Shadow bites are canyons — deep, narrow concavities the net carves
+  // where a slab falls into shade. Bridge those; keep real features.
+  const bridged = bridgeCanyons(kept);
+
   // Light smoothing (window 3) to sand the resample steps, then the 1mm
   // Smooth base. No snap displacement.
-  const n = kept.length;
-  const smoothed = kept.map((p, i) => {
-    const a = kept[(i - 1 + n) % n], b = kept[(i + 1) % n];
+  const n = bridged.length;
+  const smoothed = bridged.map((p, i) => {
+    const a = bridged[(i - 1 + n) % n], b = bridged[(i + 1) % n];
     return [(a[0] + p[0] * 2 + b[0]) / 4, (a[1] + p[1] * 2 + b[1]) / 4];
   });
   const base = simplifyClosed(removeLoops(smoothed),
@@ -810,4 +814,71 @@ function distToPolyEdge(p, poly) {
                                      p[1] - (a[1] + t * dy)));
   }
   return best;
+}
+
+
+/**
+ * Bridge deep-and-narrow concavities. A shadow bite is a canyon: it cuts
+ * far into the shape through a narrow mouth. Real slab features — clipped
+ * corners, edge chips — are wide and shallow. Walk the convex hull; for
+ * each concave chain between hull vertices, bridge it straight when its
+ * depth exceeds its mouth width, keep it when it is a genuine shape
+ * feature.
+ */
+export function bridgeCanyons(poly, depthOverWidth = 0.75) {
+  if (poly.length < 5) return poly;
+  const hull = convexHullIndices(poly);
+  if (hull.length < 3) return poly;
+  const out = [];
+  for (let k = 0; k < hull.length; k++) {
+    const i = hull[k], j = hull[(k + 1) % hull.length];
+    const a = poly[i], b = poly[j];
+    out.push(a);
+    const chain = [];
+    for (let s = (i + 1) % poly.length; s !== j; s = (s + 1) % poly.length) {
+      chain.push(poly[s]);
+    }
+    if (!chain.length) continue;
+    const width = Math.hypot(b[0] - a[0], b[1] - a[1]);
+    let depth = 0;
+    for (const p of chain) {
+      const d = Math.abs((b[0] - a[0]) * (a[1] - p[1])
+                       - (a[0] - p[0]) * (b[1] - a[1])) / Math.max(1e-9, width);
+      depth = Math.max(depth, d);
+    }
+    if (depth <= width * depthOverWidth) {
+      out.push(...chain);          // legitimate concave feature — keep
+    }
+    // else: bridged — the hull edge a->b replaces the canyon
+  }
+  return out;
+}
+
+/** Indices of the convex hull of a polygon, in polygon order. */
+function convexHullIndices(poly) {
+  const idx = poly.map((_, i) => i);
+  idx.sort((p, q) => poly[p][0] - poly[q][0] || poly[p][1] - poly[q][1]);
+  const cross = (o, a, b) =>
+    (poly[a][0] - poly[o][0]) * (poly[b][1] - poly[o][1])
+    - (poly[a][1] - poly[o][1]) * (poly[b][0] - poly[o][0]);
+  const lower = [];
+  for (const i of idx) {
+    while (lower.length >= 2
+           && cross(lower[lower.length - 2], lower[lower.length - 1], i) <= 0) {
+      lower.pop();
+    }
+    lower.push(i);
+  }
+  const upper = [];
+  for (let k = idx.length - 1; k >= 0; k--) {
+    const i = idx[k];
+    while (upper.length >= 2
+           && cross(upper[upper.length - 2], upper[upper.length - 1], i) <= 0) {
+      upper.pop();
+    }
+    upper.push(i);
+  }
+  const hullSet = new Set(lower.slice(0, -1).concat(upper.slice(0, -1)));
+  // Return in POLYGON order so chains between hull points are walkable.
+  return poly.map((_, i) => i).filter((i) => hullSet.has(i));
 }
