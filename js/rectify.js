@@ -118,7 +118,8 @@ function rotateGeom(geom, deg) {
  * via opencv.js, the desktop's exact algorithm — when the WASM module can
  * load; the pure-JS approximation only as an offline fallback. Returns
  * {ok, polygon, base (canvas px), reason}. */
-async function detectOnCanvasAsync(canvas, dstPx, pxPerMm) {
+async function detectOnCanvasAsync(canvas, dstPx, pxPerMm,
+                                   onProgress = null) {
   const refine = (() => {
     const k = Math.min(1, 1600 / Math.max(canvas.width, canvas.height));
     const c = document.createElement("canvas");
@@ -132,13 +133,18 @@ async function detectOnCanvasAsync(canvas, dstPx, pxPerMm) {
     const result = await detectSlabOutlineWorker(
       refine.data,
       dstPx.map(([x, y]) => [x * refine.k, y * refine.k]),
-      pxPerMm * refine.k);
+      pxPerMm * refine.k, onProgress);
     if (!result.ok) return result;
     const back = (pts) => pts.map(([x, y]) => [x / refine.k, y / refine.k]);
     return { ok: true, reason: null,
              polygon: back(result.polygon), base: back(result.base) };
   } catch (err) {
-    console.warn("opencv.js unavailable, falling back:", err);
+    // Worker dead, timed out, or the WASM never loaded — the pure-JS
+    // detector is a weaker but instant answer. Detect must always
+    // resolve to SOMETHING; a silent hang is the one forbidden outcome.
+    console.warn("worker detection unavailable, falling back:", err);
+    if (onProgress) onProgress("detecting (basic)…");
+    await new Promise((r) => setTimeout(r, 30));
     return detectOnCanvas(canvas, dstPx, pxPerMm);
   }
 }
@@ -570,11 +576,12 @@ function previewStage(makeWarp, marginMm) {
       const btn = $("pv-detect");
       btn.textContent = "Detecting…";
       btn.disabled = true;
-      // Let the label paint before the solver blocks the thread.
       await new Promise((r) => setTimeout(r, 30));
       let result;
       try {
-        result = await detectOnCanvasAsync(src, warped.dstPx, warped.pxPerMm);
+        result = await detectOnCanvasAsync(
+          src, warped.dstPx, warped.pxPerMm,
+          (stage) => { btn.textContent = stage; });
       } finally {
         detecting = false;
         btn.textContent = "Detect";

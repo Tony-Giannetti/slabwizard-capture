@@ -24,12 +24,18 @@ function getWorker() {
   if (worker) return worker;
   worker = new Worker("js/detect_worker.js");
   worker.onmessage = (ev) => {
+    if (ev.data && ev.data.type === "pong") return;
     const entry = pending.get(ev.data.id);
-    if (entry) {
-      pending.delete(ev.data.id);
-      clearTimeout(entry.timer);
-      entry.resolve(ev.data);
+    if (!entry) return;
+    if (ev.data.progress) {
+      // Staged status ("downloading detector…", "detecting…") — surfaced
+      // so a long first run is visibly alive, never a silent hang.
+      if (entry.onProgress) entry.onProgress(ev.data.progress);
+      return;
     }
+    pending.delete(ev.data.id);
+    clearTimeout(entry.timer);
+    entry.resolve(ev.data);
   };
   worker.onerror = (err) => {
     // The worker itself died — fail everything in flight and start fresh
@@ -45,7 +51,7 @@ function getWorker() {
   return worker;
 }
 
-function segmentInWorker(imageData, quad, pxPerMm) {
+function segmentInWorker(imageData, quad, pxPerMm, onProgress) {
   return new Promise((resolve, reject) => {
     const id = nextId++;
     const w = getWorker();
@@ -57,7 +63,7 @@ function segmentInWorker(imageData, quad, pxPerMm) {
       worker = null;
       reject(new Error("detection timed out"));
     }, WORKER_TIMEOUT_MS);
-    pending.set(id, { resolve, reject, timer });
+    pending.set(id, { resolve, reject, timer, onProgress });
     // Copy the pixels into a transferable buffer — ownership moves to the
     // worker, nothing is serialised.
     const buf = imageData.data.buffer.slice(0);
@@ -71,10 +77,12 @@ function segmentInWorker(imageData, quad, pxPerMm) {
  * detectSlabOutline: {ok, polygon, base, confidence, reason} in raster px.
  */
 export async function detectSlabOutlineWorker(refine, quadRefine,
-                                              pxPerMmRefine) {
+                                              pxPerMmRefine,
+                                              onProgress = null) {
   const fail = (reason) => ({ ok: false, polygon: null, base: null,
                               confidence: 0, reason });
-  const seg = await segmentInWorker(refine, quadRefine, pxPerMmRefine);
+  const seg = await segmentInWorker(refine, quadRefine, pxPerMmRefine,
+                                    onProgress);
   if (!seg.ok) return fail(seg.reason);
 
   const dense = [];
