@@ -22,7 +22,7 @@ import {
   loadSettings, saveSettings, ensureDeviceName,
   recentValues, rememberValue, SAFE_NAME_RE,
 } from "./js/settings.js";
-import { diagInstall, diagList, diagClear } from "./js/diag.js";
+import { diagInstall, diagList, diagClear, diagLog } from "./js/diag.js";
 
 const $ = (id) => document.getElementById(id);
 
@@ -161,22 +161,34 @@ cornersBtn.addEventListener("click", async () => {
 
 els.photoInput.addEventListener("change", async () => {
   const file = els.photoInput.files?.[0];
-  if (!file) return;
+  if (!file) {
+    diagLog("photo: change fired with no file");
+    return;
+  }
+  diagLog("photo: received " + (file.type || "unknown-type") + " "
+          + formatBytes(file.size) + " " + (file.name || ""));
   els.photoMeta.hidden = false;
   els.photoMeta.textContent = "Processing photo…";
   try {
     photo = await preparePhoto(file);
+    diagLog("photo: prepared " + photo.width + "x" + photo.height);
     setPreview(photo.blob);
     els.photoMeta.textContent =
       `${photo.width} × ${photo.height} px · ${formatBytes(photo.blob.size)}`;
     setRectify(null);            // old marks belong to the old pixels
   } catch (err) {
+    diagLog("photo: FAILED " + err.message);
     photo = null;
     setRectify(null);
     setPreview(null);
     els.photoMeta.textContent = "";
     els.photoMeta.hidden = true;
-    toast(`Could not read that photo: ${err.message}`, "err");
+    const heifHint = /hei[cf]/i.test(file.type || "")
+      || !/^image\/(jpeg|png|webp)/i.test(file.type || "image/jpeg");
+    toast(heifHint
+      ? "This photo format isn't supported — set the camera to save "
+        + "JPEG (turn off high-efficiency/HEIF pictures) and retake."
+      : `Could not read that photo: ${err.message}`, "err");
   } finally {
     // Let the same file be picked again if they retake it.
     els.photoInput.value = "";
