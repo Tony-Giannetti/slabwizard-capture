@@ -18,6 +18,7 @@ import { openCornerMarker } from "./corners.js";
 import { rectCorners, quadCorners } from "./homography.js";
 import { warpToCanvas, cropToBlobMasked } from "./warp.js";
 import { detectSlabOutline, pixelGetter, simplifyClosed } from "./outline.js";
+import { loadOpenCV, detectSlabOutlineCv } from "./outline_cv.js";
 
 const $ = (id) => document.getElementById(id);
 
@@ -113,9 +114,36 @@ function rotateGeom(geom, deg) {
   };
 }
 
-/** The desktop detection pipeline, staged like outline.py: segment on a
- * small raster, refine (edge-snap) at higher resolution. Returns
- * {ok, polygon (canvas px), reason}. */
+/** The desktop detection pipeline. Runs the REAL pipeline — cv.grabCut
+ * via opencv.js, the desktop's exact algorithm — when the WASM module can
+ * load; the pure-JS approximation only as an offline fallback. Returns
+ * {ok, polygon, base (canvas px), reason}. */
+async function detectOnCanvasAsync(canvas, dstPx, pxPerMm) {
+  const refine = (() => {
+    const k = Math.min(1, 1600 / Math.max(canvas.width, canvas.height));
+    const c = document.createElement("canvas");
+    c.width = Math.max(1, Math.round(canvas.width * k));
+    c.height = Math.max(1, Math.round(canvas.height * k));
+    const cctx = c.getContext("2d", { willReadFrequently: true });
+    cctx.drawImage(canvas, 0, 0, c.width, c.height);
+    return { k, data: cctx.getImageData(0, 0, c.width, c.height) };
+  })();
+  try {
+    const cv = await loadOpenCV();
+    const result = detectSlabOutlineCv(
+      cv, refine.data,
+      dstPx.map(([x, y]) => [x * refine.k, y * refine.k]),
+      pxPerMm * refine.k);
+    if (!result.ok) return result;
+    const back = (pts) => pts.map(([x, y]) => [x / refine.k, y / refine.k]);
+    return { ok: true, reason: null,
+             polygon: back(result.polygon), base: back(result.base) };
+  } catch (err) {
+    console.warn("opencv.js unavailable, falling back:", err);
+    return detectOnCanvas(canvas, dstPx, pxPerMm);
+  }
+}
+
 function detectOnCanvas(canvas, dstPx, pxPerMm) {
   const raster = (maxEdge) => {
     const k = Math.min(1, maxEdge / Math.max(canvas.width, canvas.height));
@@ -536,8 +564,23 @@ function previewStage(makeWarp, marginMm) {
       draw();
     };
 
-    $("pv-detect").onclick = () => {
-      const result = detectOnCanvas(src, warped.dstPx, warped.pxPerMm);
+    let detecting = false;
+    $("pv-detect").onclick = async () => {
+      if (detecting) return;
+      detecting = true;
+      const btn = $("pv-detect");
+      btn.textContent = "Detecting…";
+      btn.disabled = true;
+      // Let the label paint before the solver blocks the thread.
+      await new Promise((r) => setTimeout(r, 30));
+      let result;
+      try {
+        result = await detectOnCanvasAsync(src, warped.dstPx, warped.pxPerMm);
+      } finally {
+        detecting = false;
+        btn.textContent = "Detect";
+        btn.disabled = false;
+      }
       if (result.ok) {
         outlineBase = result.base;
         applySmooth();

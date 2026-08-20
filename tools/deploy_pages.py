@@ -30,7 +30,7 @@ PAGES_URL = "https://tony-giannetti.github.io/slabwizard-capture/"
 # Everything the browser needs, plus the docs and the icon generator.
 INCLUDE_FILES = ["index.html", "styles.css", "app.js", "config.js",
                  "manifest.webmanifest", "sw.js", "README.md"]
-INCLUDE_DIRS = ["js", "icons", "tools"]
+INCLUDE_DIRS = ["js", "icons", "tools", "vendor"]
 SKIP_NAMES = {"__pycache__", ".DS_Store", "Thumbs.db"}
 
 _CACHE_RE = re.compile(r'(const CACHE = "slabwizard-capture-v)(\d+)(";)')
