@@ -42,6 +42,29 @@
   </button>
   <p id="corners-state" class="hint corners-state" hidden></p>
 
+  <div id="jig-block" hidden>
+    <label class="field">
+      <span><input id="jig-toggle" type="checkbox">
+        Jig target stickers on the slab</span>
+    </label>
+    <div id="jig-spans" class="row" hidden>
+      <div class="field grow">
+        <label for="jig-span-x">Targets across (mm)</label>
+        <input id="jig-span-x" type="number" inputmode="decimal"
+               min="1" value="2000">
+      </div>
+      <div class="field grow">
+        <label for="jig-span-y">Targets down (mm)</label>
+        <input id="jig-span-y" type="number" inputmode="decimal"
+               min="1" value="1000">
+      </div>
+    </div>
+    <p id="jig-hint" class="hint" hidden>
+      The PC will find the stickers and flatten the photo automatically —
+      no corner marking needed.
+    </p>
+  </div>
+
   <form id="slab-form" novalidate>
     <div class="row">
       <div class="field grow">
@@ -186,7 +209,7 @@
   </details>
 
   <p class="hint version">SlabWizard Capture
-    <span id="app-version">v27</span> &middot; bundle schema 1</p>
+    <span id="app-version">v28</span> &middot; bundle schema 1</p>
 </main>
 
 <div id="toast" class="toast" hidden></div>

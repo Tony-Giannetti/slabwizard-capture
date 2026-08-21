@@ -63,10 +63,17 @@ export const RECTIFIED_NAME = "rectified.jpg";
  *  - `measurements`: rect/quad tape sizes + margin, for the PC fallback;
  *  - `rectified`: present when the phone warped locally — the flattened
  *    image travels as rectified.jpg and the PC trusts it as-is.
+ *
+ * `targetJig` (optional) is `{span_x_mm, span_y_mm}` — the slab carries 4
+ * jig-placed target stickers at that known centre-to-centre rectangle, so
+ * the PC auto-detects them and rectifies with no corner marks and no
+ * tape. Additive to schema 1; explicit corners win on the PC when both
+ * are present.
  */
 export function buildManifest(form, meta) {
   const r = meta.rectify;
   const extras = {};
+  if (meta.targetJig) extras.target_jig = meta.targetJig;
   if (r) {
     extras.corners = r.corners;
     extras.measurements = r.mode === "quad"

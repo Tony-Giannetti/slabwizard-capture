@@ -107,10 +107,57 @@ const cornersBtn = $("btn-corners");
 const cornersState = $("corners-state");
 let rectPreviewUrl = null;
 
+/* ── Jig target stickers ───────────────────────────────────────────────────
+ * The stickers sit at a KNOWN centre-to-centre rectangle (placed by a
+ * jig), so the PC can find them and flatten the photo itself: no corner
+ * marking, no tape. The toggle and spans persist — a shop has one jig. */
+const jigBlock = $("jig-block");
+const jigToggle = $("jig-toggle");
+const jigSpans = $("jig-spans");
+const jigHint = $("jig-hint");
+const jigX = $("jig-span-x");
+const jigY = $("jig-span-y");
+const JIG_STORE = { on: "slabwizard.jig.on", x: "slabwizard.jig.x",
+                    y: "slabwizard.jig.y" };
+
+function jigValue() {
+  if (!jigToggle.checked) return null;
+  const x = Number.parseFloat(jigX.value);
+  const y = Number.parseFloat(jigY.value);
+  if (!Number.isFinite(x) || x <= 0 || !Number.isFinite(y) || y <= 0) {
+    return null;
+  }
+  return { span_x_mm: x, span_y_mm: y };
+}
+
+function updateJigUi() {
+  jigSpans.hidden = !jigToggle.checked;
+  jigHint.hidden = !jigToggle.checked;
+}
+
+function saveJig() {
+  try {
+    localStorage.setItem(JIG_STORE.on, jigToggle.checked ? "1" : "0");
+    localStorage.setItem(JIG_STORE.x, jigX.value);
+    localStorage.setItem(JIG_STORE.y, jigY.value);
+  } catch { /* storage unavailable — the session still works */ }
+}
+
+try {
+  jigToggle.checked = localStorage.getItem(JIG_STORE.on) === "1";
+  jigX.value = localStorage.getItem(JIG_STORE.x) || jigX.value;
+  jigY.value = localStorage.getItem(JIG_STORE.y) || jigY.value;
+} catch { /* defaults stand */ }
+updateJigUi();
+jigToggle.addEventListener("change", () => { saveJig(); updateJigUi(); });
+jigX.addEventListener("change", saveJig);
+jigY.addEventListener("change", saveJig);
+
 function setRectify(value) {
   rectify = value;
   cornersBtn.hidden = !photo;
   cornersState.hidden = !photo;
+  jigBlock.hidden = !photo;
   if (rectPreviewUrl) { URL.revokeObjectURL(rectPreviewUrl); rectPreviewUrl = null; }
   if (!photo) return;
   if (rectify && rectify.output) {
@@ -222,6 +269,14 @@ els.form.addEventListener("submit", async (event) => {
     return;
   }
 
+  const targetJig = jigValue();
+  if (jigToggle.checked && !targetJig) {
+    els.formError.textContent =
+      "Target sticker spans must be numbers greater than zero.";
+    els.formError.hidden = false;
+    return;
+  }
+
   els.btnSave.disabled = true;
   try {
     const capture_id = newCaptureId();
@@ -230,6 +285,7 @@ els.form.addEventListener("submit", async (event) => {
       tenant: settings.tenant,
       device: ensureDeviceName(),
       rectify,
+      targetJig,
     });
 
     await putCapture({
