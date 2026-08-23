@@ -633,6 +633,16 @@ async function init() {
       });
       const registration = await navigator.serviceWorker.register("sw.js");
       registration.update();      // check for a new deploy on every launch
+      // A PWA brought back from the recents list is RESUMED, not
+      // relaunched — init never re-runs, so a phone that is never fully
+      // closed never sees a new deploy. Check again whenever the app
+      // returns to the foreground, but only while no capture is loaded:
+      // the update reload must never eat a half-filled form.
+      document.addEventListener("visibilitychange", () => {
+        if (document.visibilityState === "visible" && !photo) {
+          registration.update();
+        }
+      });
     } catch (err) {
       console.warn("Service worker registration failed:", err);
     }
