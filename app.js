@@ -20,7 +20,7 @@ import {
 } from "./js/drive.js";
 import {
   loadSettings, saveSettings, ensureDeviceName,
-  recentValues, rememberValue, SAFE_NAME_RE,
+  recentValues, rememberValue, SAFE_NAME_RE, applyUrlOverrides,
 } from "./js/settings.js";
 import { diagInstall, diagList, diagClear, diagLog } from "./js/diag.js";
 
@@ -607,6 +607,7 @@ function fillDatalists() {
 }
 
 async function init() {
+  applyUrlOverrides();     // QR onboarding: ?site= etc. before anything reads settings
   diagInstall();
   $("diag-clear").addEventListener("click", () => {
     diagClear();

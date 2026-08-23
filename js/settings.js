@@ -56,6 +56,35 @@ export function saveSettings(patch) {
   return loadSettings();
 }
 
+/**
+ * Apply settings carried on the URL, then clean it.
+ *
+ * QR onboarding: the PC's "Set Up a Phone" dialog encodes overrides in
+ * the link (`?site=<tenant>`), so a scanned phone configures itself and
+ * the operator types nothing. Saved into localStorage (which the
+ * installed app shares with the browser tab the QR opened), so the
+ * override survives Add to Home Screen.
+ */
+export function applyUrlOverrides(loc = window.location,
+                                  hist = window.history) {
+  let params;
+  try {
+    params = new URLSearchParams(loc.search || "");
+  } catch {
+    return;
+  }
+  const patch = {};
+  const site = (params.get("site") || "").trim();
+  if (site && SAFE_NAME_RE.test(site)) patch.tenant = site;
+  const folder = (params.get("folder") || "").trim();
+  if (folder) patch.folderName = folder;
+  if (!Object.keys(patch).length) return;
+  saveSettings(patch);
+  try {
+    hist.replaceState(null, "", loc.pathname);   // don't re-apply forever
+  } catch { /* history unavailable — harmless, it re-applies same values */ }
+}
+
 /** A device name for the provenance line, invented once and kept. */
 export function ensureDeviceName() {
   const s = loadSettings();

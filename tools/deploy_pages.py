@@ -29,7 +29,8 @@ PAGES_URL = "https://tony-giannetti.github.io/slabwizard-capture/"
 
 # Everything the browser needs, plus the docs and the icon generator.
 INCLUDE_FILES = ["index.html", "styles.css", "app.js", "config.js",
-                 "manifest.webmanifest", "sw.js", "README.md"]
+                 "manifest.webmanifest", "sw.js", "README.md",
+                 "privacy.html"]
 INCLUDE_DIRS = ["js", "icons", "tools", "vendor"]
 SKIP_NAMES = {"__pycache__", ".DS_Store", "Thumbs.db"}
 
