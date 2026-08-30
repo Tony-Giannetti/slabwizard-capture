@@ -330,11 +330,22 @@ button.secondary:active { background: var(--pressed); }
 
 /* ─────────────────────────── Corner marking ─────────────────────────── */
 
-/* Rectify button with the jig-sticker toggle inline at its right. */
+/* Rectify button with the jig-sticker toggle inline at its right.
+   `.corners-row .corners-btn` outranks `button.secondary` — a bare
+   `.corners-btn` loses the margin-top fight and sits 16px low. */
 .corners-row { display: flex; align-items: stretch; gap: 10px; margin-top: 10px; }
 .corners-row:not(:has(:not([hidden]))) { display: none; }  /* pre-photo: no stray gap */
-.corners-btn { margin-top: 0; flex: 1 1 auto; width: auto; }
+.corners-row .corners-btn {
+  margin-top: 0;
+  flex: 1 1 auto;
+  width: auto;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+}
 .corners-btn.marked { border-color: var(--ok); color: var(--ok); }
+.btn-ico { width: 26px; height: 26px; object-fit: contain; flex: none; }
 .corners-state { margin: 6px 2px 0; }
 .corners-state .ok { color: var(--ok); }
 #jig-spans { margin-top: 12px; }
@@ -344,6 +355,7 @@ button.secondary:active { background: var(--pressed); }
   display: flex;
   align-items: center;
   gap: 8px;
+  min-height: 56px;        /* same height as button.secondary beside it */
   padding: 0 14px;
   font-size: 14px;
   font-weight: 600;

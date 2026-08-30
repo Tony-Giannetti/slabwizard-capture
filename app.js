@@ -104,6 +104,7 @@ function setPreview(blob) {
 }
 
 const cornersBtn = $("btn-corners");
+const cornersLabel = $("btn-corners-label");  // the button holds an icon too
 const cornersState = $("corners-state");
 let rectPreviewUrl = null;
 
@@ -168,7 +169,7 @@ function setRectify(value) {
     // Show the FLATTENED image — it is what will land in the inventory.
     rectPreviewUrl = URL.createObjectURL(rectify.output.blob);
     els.photoPreview.src = rectPreviewUrl;
-    cornersBtn.textContent = "Re-rectify…";
+    cornersLabel.textContent = "Re-rectify…";
     cornersBtn.classList.add("marked");
     const w = Math.round(rectify.output.widthMm);
     const h = Math.round(rectify.output.heightMm);
@@ -182,7 +183,7 @@ function setRectify(value) {
       "Dimensions are locked to the rectification.";
   } else if (rectify) {
     // Corners + measurements captured, but no WebGL — the PC will warp.
-    cornersBtn.textContent = "Adjust rectification…";
+    cornersLabel.textContent = "Adjust rectification…";
     cornersBtn.classList.add("marked");
     $(FIELD_IDS.width_mm).disabled = false;
     $(FIELD_IDS.height_mm).disabled = false;
@@ -190,13 +191,13 @@ function setRectify(value) {
       '<span class="ok">&#10003; Corners + measurements set</span> — ' +
       "the PC will flatten and measure the photo at import.";
   } else {
-    cornersBtn.textContent = "Rectify photo…";
+    cornersLabel.textContent = "Rectify photo…";
     cornersBtn.classList.remove("marked");
     $(FIELD_IDS.width_mm).disabled = false;
     $(FIELD_IDS.height_mm).disabled = false;
-    cornersState.textContent =
-      "Optional: mark the slab's corners and tape sizes to flatten the " +
-      "photo to true dimensions — like the rectify dialog on the PC.";
+    // No explainer while nothing is rectified — the button says it all.
+    cornersState.textContent = "";
+    cornersState.hidden = true;
   }
 }
 
