@@ -35,6 +35,11 @@
 
 * { box-sizing: border-box; }
 
+/* The hidden attribute must always win. Several classes below set
+   display:flex/block, which overrides the UA's plain [hidden] rule —
+   the camera placeholder kept drawing over the photo because of it. */
+[hidden] { display: none !important; }
+
 html, body {
   margin: 0;
   background: var(--bg);
@@ -325,10 +330,37 @@ button.secondary:active { background: var(--pressed); }
 
 /* ─────────────────────────── Corner marking ─────────────────────────── */
 
-.corners-btn { margin-top: 10px; }
+/* Rectify button with the jig-sticker toggle inline at its right. */
+.corners-row { display: flex; align-items: stretch; gap: 10px; margin-top: 10px; }
+.corners-row:not(:has(:not([hidden]))) { display: none; }  /* pre-photo: no stray gap */
+.corners-btn { margin-top: 0; flex: 1 1 auto; width: auto; }
 .corners-btn.marked { border-color: var(--ok); color: var(--ok); }
 .corners-state { margin: 6px 2px 0; }
 .corners-state .ok { color: var(--ok); }
+#jig-spans { margin-top: 12px; }
+
+.jig-inline {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 0 14px;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text);
+  background: var(--surface-2);
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+}
+.jig-inline input {
+  width: 22px;
+  height: 22px;
+  min-height: 0;
+  padding: 0;
+  flex: none;
+  accent-color: var(--accent);
+}
 
 .corner-overlay {
   position: fixed;

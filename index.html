@@ -39,62 +39,35 @@
   </label>
   <p id="photo-meta" class="photo-meta" hidden></p>
 
-  <button id="btn-corners" class="secondary corners-btn" type="button" hidden>
-    Rectify photo…
-  </button>
+  <div class="corners-row">
+    <button id="btn-corners" class="secondary corners-btn" type="button" hidden>
+      Rectify photo…
+    </button>
+    <label id="jig-block" class="jig-inline" hidden>
+      <input id="jig-toggle" type="checkbox">
+      Jig stickers
+    </label>
+  </div>
   <p id="corners-state" class="hint corners-state" hidden></p>
 
-  <div id="jig-block" hidden>
-    <label class="field">
-      <span><input id="jig-toggle" type="checkbox">
-        Jig target stickers on the slab</span>
-    </label>
-    <div id="jig-spans" class="row" hidden>
-      <div class="field grow">
-        <label for="jig-span-x">Targets across (mm)</label>
-        <input id="jig-span-x" type="number" inputmode="decimal"
-               min="1" value="2000">
-      </div>
-      <div class="field grow">
-        <label for="jig-span-y">Targets down (mm)</label>
-        <input id="jig-span-y" type="number" inputmode="decimal"
-               min="1" value="1000">
-      </div>
+  <div id="jig-spans" class="row" hidden>
+    <div class="field grow">
+      <label for="jig-span-x">Across (mm)</label>
+      <input id="jig-span-x" type="number" inputmode="decimal"
+             min="1" value="2000">
     </div>
-    <p id="jig-hint" class="hint" hidden>
-      The PC will find the stickers and flatten the photo automatically —
-      no corner marking needed.
-    </p>
+    <div class="field grow">
+      <label for="jig-span-y">Down (mm)</label>
+      <input id="jig-span-y" type="number" inputmode="decimal"
+             min="1" value="1000">
+    </div>
   </div>
+  <p id="jig-hint" class="hint" hidden>
+    The PC will find the stickers and flatten the photo automatically —
+    no corner marking needed.
+  </p>
 
   <form id="slab-form" novalidate>
-    <div class="row">
-      <div class="field grow">
-        <label for="f-material">Material <span class="req">*</span></label>
-        <input id="f-material" list="material-list" autocomplete="off"
-               enterkeyhint="next" placeholder="e.g. Calacatta Gold">
-        <datalist id="material-list"></datalist>
-      </div>
-      <div class="field narrow">
-        <label for="f-thickness">Thick. (mm) <span class="req">*</span></label>
-        <input id="f-thickness" type="number" inputmode="decimal" step="any"
-               min="0" placeholder="20">
-      </div>
-    </div>
-
-    <div class="row">
-      <div class="field">
-        <label for="f-width">Width (mm) <span class="req">*</span></label>
-        <input id="f-width" type="number" inputmode="decimal" step="any"
-               min="0" placeholder="3200">
-      </div>
-      <div class="field">
-        <label for="f-height">Height (mm) <span class="req">*</span></label>
-        <input id="f-height" type="number" inputmode="decimal" step="any"
-               min="0" placeholder="1600">
-      </div>
-    </div>
-
     <div class="row">
       <div class="field grow">
         <label for="f-name">Name</label>
@@ -109,6 +82,33 @@
       </div>
     </div>
 
+    <div class="row">
+      <div class="field grow">
+        <label for="f-material">Material <span class="req">*</span></label>
+        <input id="f-material" list="material-list" autocomplete="off"
+               enterkeyhint="next" placeholder="e.g. Calacatta Gold">
+        <datalist id="material-list"></datalist>
+      </div>
+      <div class="field narrow">
+        <label for="f-thickness">Thickness <span class="req">*</span></label>
+        <input id="f-thickness" type="number" inputmode="decimal" step="any"
+               min="0" placeholder="20">
+      </div>
+    </div>
+
+    <div class="row">
+      <div class="field">
+        <label for="f-width">Width <span class="req">*</span></label>
+        <input id="f-width" type="number" inputmode="decimal" step="any"
+               min="0" placeholder="3200">
+      </div>
+      <div class="field">
+        <label for="f-height">Height <span class="req">*</span></label>
+        <input id="f-height" type="number" inputmode="decimal" step="any"
+               min="0" placeholder="1600">
+      </div>
+    </div>
+
     <details id="more-fields">
       <summary>Supplier, location &amp; cost</summary>
       <div class="row">
@@ -118,7 +118,7 @@
           <datalist id="supplier-list"></datalist>
         </div>
         <div class="field narrow">
-          <label for="f-lot">Lot / bundle</label>
+          <label for="f-lot">Lot</label>
           <input id="f-lot" autocomplete="off">
         </div>
       </div>
@@ -213,7 +213,7 @@
   <p class="hint version">
     <img class="footer-logo" src="icons/icon-192.png" alt="">
     SlabWizard Capture
-    <span id="app-version">v33</span> &middot; bundle schema 1</p>
+    <span id="app-version">v34</span> &middot; bundle schema 1</p>
 </main>
 
 <div id="toast" class="toast" hidden></div>

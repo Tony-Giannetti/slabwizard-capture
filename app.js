@@ -131,8 +131,11 @@ function jigValue() {
 }
 
 function updateJigUi() {
-  jigSpans.hidden = !jigToggle.checked;
-  jigHint.hidden = !jigToggle.checked;
+  // The spans live OUTSIDE #jig-block (the checkbox sits inline with the
+  // rectify button), so they must track the photo as well as the toggle.
+  const show = Boolean(photo) && jigToggle.checked;
+  jigSpans.hidden = !show;
+  jigHint.hidden = !show;
 }
 
 function saveJig() {
@@ -158,6 +161,7 @@ function setRectify(value) {
   cornersBtn.hidden = !photo;
   cornersState.hidden = !photo;
   jigBlock.hidden = !photo;
+  updateJigUi();
   if (rectPreviewUrl) { URL.revokeObjectURL(rectPreviewUrl); rectPreviewUrl = null; }
   if (!photo) return;
   if (rectify && rectify.output) {
