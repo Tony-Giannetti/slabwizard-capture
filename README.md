@@ -28,10 +28,14 @@ whose only job is to let the PC recognise a bundle it has already imported.
 The `SL-<year>-<seq>` id is allocated by `InventoryStore.next_id()` at import
 time, so two people photographing the same rack cannot collide.
 
-**The PC has no cloud code at all.** Google Drive for Desktop already puts
-the files on disk, so SlabWizard reads a local directory —
-`core/inventory/ingest/sources.py`. There is no OAuth, no token, no network
-call anywhere in the desktop app for this feature.
+**The PC talks to Drive as the same app the phone does.** In drive-direct
+mode (the default) the desktop authenticates with the phone's own web OAuth
+client — `drive.file` grants access per *app*, so sharing the client is what
+lets the PC see the phone's uploads. Folder mode is the cloud-free
+alternative: a sync client (Google Drive for Desktop, OneDrive) mirrors the
+captures folder onto disk and SlabWizard just reads a local directory —
+`core/inventory/ingest/sources.py` — with no OAuth or network code on the PC
+at all.
 
 **The transport is swappable.** `CaptureSource` is a two-method protocol. The
 day a relay server makes more sense than a shared Drive folder, a
@@ -68,13 +72,20 @@ Once, in the [Google Cloud Console](https://console.cloud.google.com/):
 
 1. Create a project (any name).
 2. **APIs & Services → Library →** enable **Google Drive API**.
-3. **APIs & Services → OAuth consent screen**
+3. **Google Auth Platform** (formerly APIs & Services → OAuth consent screen)
    - *Internal* if you have Google Workspace — nothing further to do.
-   - *External* otherwise: fill in the app name and your email, then add
-     every phone's Google account under **Test users**. Test-user mode is
-     fine indefinitely for a private tool; it does not need verification.
-   - Scope needed: `.../auth/drive.file` — narrow enough that Google does
-     not require a review.
+   - *External* otherwise: fill in **Branding** (app name, support email,
+     privacy policy URL — skip the logo, uploading one triggers a separate
+     brand-verification review), then **Audience → Publish app**. With only
+     the `drive.file` scope the publish is instant — no Google review, no
+     CASA audit.
+   - Do **not** leave the app in *Testing*: refresh tokens expire every
+     7 days there (the PC's From-Phone import silently breaks weekly) and
+     every Google account must be hand-added under **Test users**. The
+     shipped SlabWizard Capture client has been in Production since
+     2026-08-29; these steps only matter if you stand up your own client.
+   - Scope needed: `.../auth/drive.file` — non-sensitive; any broader
+     Drive scope is what would trigger verification.
 4. **Credentials → Create credentials → OAuth client ID → Web application**
    - **Authorised JavaScript origins**: the exact origin you host on, e.g.
      `https://yourname.github.io` (no path, no trailing slash). Add
@@ -218,9 +229,15 @@ does not know.
 was blocked as a popup. Tap **Upload now** — a real tap is allowed to open
 the consent flow.
 
-**Uploads fail with 403 after it worked before.** The OAuth consent screen is
-in *Testing* and the account is not on the test-user list, or the hosting
-origin is not in *Authorised JavaScript origins*.
+**Uploads fail with 403 after it worked before.** The hosting origin is not
+in *Authorised JavaScript origins*, or (self-hosted clients only) the OAuth
+app is sitting in *Testing* and the account is not on the test-user list.
+The shipped client is in Production, so for it check the origin.
+
+**The PC's From-Phone import asks for consent again after about a week.**
+That refresh token was minted while the OAuth app was in *Testing* (7-day
+expiry). Sign in once more now the app is in Production — tokens minted
+after 2026-08-29 do not expire.
 
 **Nothing imports on the PC.** Check the folder you picked actually contains
 `pending/`. If Drive is in *Stream files* mode, make sure the PC is online.
